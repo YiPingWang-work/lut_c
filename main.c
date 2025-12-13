@@ -47,53 +47,45 @@
 // }
 
 
-
 int main() {
-    uint8x16_t flag = {
-            3,
-            1,
-            2,
-            3,
-            1,
-            0,
-            2,
-            1,
+    uint8x16_t iweight_3x16 = {0, 15, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
 
-            3,
-            3,
-            0,
-            0,
-            1,
-            2,
-            1,
-            3,
-    };
-    int8x16_t ret_r_tmp0 = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+    int8x16_t ret_r_tmp0 = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
     int8x16_t ret_i_tmp0 = vaddq_s8(vdupq_n_u8(100), ret_r_tmp0);
+    uint8x16_t index = vandq_u8(iweight_3x16, vdupq_n_u8(7));
+    int8x16x2_t ilut = {
+        ret_r_tmp0,
+        ret_i_tmp0,
+    };
 
-    uint8x16_t mask = vcgeq_u8(flag, vdupq_n_u8(2));
-    int8x16_t ret_r_tmp1 = vbslq_u8(mask, ret_i_tmp0, ret_r_tmp0);
-    int8x16_t ret_i_tmp1 = vbslq_u8(mask, ret_r_tmp0, ret_i_tmp0);
-    int8x16_t ret_r_tmp1_neg = vnegq_s8(ret_r_tmp1);
-    int8x16_t ret_i_tmp1_neg = vnegq_s8(ret_i_tmp1);
 
+    int8x16_t r0 = vqtbl1q_s8(ilut.val[0], index); // 全部的16个数据在ilut0中的实部
+    int8x16_t i0 = vqtbl1q_s8(ilut.val[0], vaddq_u8(index, vdupq_n_u8(8))); // 全部的16个数据在ilut0中的虚部
+    int8x16_t r1 = vqtbl1q_s8(ilut.val[1], index); // 全部的16个数据在ilut1中的实部
+    int8x16_t i1 = vqtbl1q_s8(ilut.val[1], vaddq_u8(index, vdupq_n_u8(8))); // 全部的16个数据在ilut1中的虚部
 
-    // 如果是 01 => ret_r_tmp1 ret_i_tmp1 取负数
-    mask = vceqq_u8(flag, vdupq_n_u8(1));
-    int8x16_t ret_r_tmp2 = vbslq_u8(mask, ret_r_tmp1_neg, ret_r_tmp1);
-    int8x16_t ret_i_tmp2 = vbslq_u8(mask, ret_i_tmp1_neg , ret_i_tmp1);
-
-    // 如果是是10 => ret_r_tmp1 取负数
-    mask = vceqq_u8(flag, vdupq_n_u8(2));
-    int8x16_t ret_r = vbslq_u8(mask, ret_r_tmp1_neg, ret_r_tmp2);
-
-    // 如果是11 => ret_i_tmp1 取负数
-    mask = vceqq_u8(flag, vdupq_n_u8(3));
-    int8x16_t ret_i = vbslq_u8(mask, ret_i_tmp1_neg , ret_i_tmp2);
 
 
     for (int i = 0; i < 16; i++) {
-        printf("%d %d\n", ret_r[i], ret_i[i]);
+        printf("%d %d\n", r0[i], i0[i]);
+    }
+
+    printf(" ===\n");
+
+    for (int i = 0; i < 16; i++) {
+        printf("%d %d\n", r1[i], i1[i]);
+    }
+    
+    printf(" ===\n");
+
+    uint8x16_t mask = vceqq_u8(vandq_u8(iweight_3x16, vdupq_n_u8(8)), vdupq_n_u8(8));
+
+
+    int8x16_t iret_r_tmp0 = vbslq_u8(mask, r1, r0);
+    int8x16_t iret_i_tmp0 = vbslq_u8(mask, i1, i0);
+
+    for (int i = 0; i < 16; i++) {
+        printf("%d %d %d\n", mask[i], iret_r_tmp0[i], iret_i_tmp0[i]);
     }
 
 }

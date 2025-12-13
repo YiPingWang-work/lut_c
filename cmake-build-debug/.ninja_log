@@ -1,7 +1,0 @@
-# ninja log v6
-48	71	1765297058760610679	lut_c	5040c5e066b18e9a
-1	64	1765296371660327289	CMakeFiles/lut_c.dir/lut/mul_mat_with_lut.c.o	530fae02232eb465
-1	48	1765297058713263888	CMakeFiles/lut_c.dir/main.c.o	4b98479df87ce221
-1	62	1765297477781334622	CMakeFiles/lut_c.dir/main.c.o	4b98479df87ce221
-1	71	1765297477781632748	CMakeFiles/lut_c.dir/lut/mul_mat_with_lut.c.o	530fae02232eb465
-71	98	1765297477851620890	lut_c	5040c5e066b18e9a
