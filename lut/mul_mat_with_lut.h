@@ -2,6 +2,11 @@
 #define MUL_MAT_WITH_LUT
 
 #include <arm_neon.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdint.h>
 
 #define QK_K 256
 typedef uint16_t ggml_half;
@@ -12,11 +17,11 @@ typedef struct {
     ggml_half d_real, d_imag;
 } block_ifairy;
 
-static const uint8x16_t uint8x16_t_0_15 = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-static const uint8x16_t uint8x16_t_0_15_swapped = {1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14};
-
-
-void generate_lut_int8(const int16_t *activation, int m, int8x16x2_t *lut);
-void mul_mat_nxm_mx1(void *weight, int n, int m, int8x16x2_t *lut, int8_t *output);
+int8x16x2_t *alloc_lut(int m);
+void free_lut(int8x16x2_t *lut);
+void generate_lut_int8(const int16_t *act, int m, int8x16x2_t *lut);
+void mul_mat_nxm_mx1_with_lut(block_ifairy *weight, int block_n, int row_begin, int row_end, int8x16x2_t *lut, int32_t *dst);
+void mul_mat_nxm_mx1(block_ifairy *weight, int block_n, int row_begin, int row_end, int16_t *act, int32_t *dst);
+int32x2_t mul_mat_1x4_4x1(uint8_t a, int16_t *b);
 
 #endif

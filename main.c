@@ -1,168 +1,120 @@
 #include <stdio.h>
-#include <arm_neon.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 #include <stdint.h>
 #include "lut/mul_mat_with_lut.h"
 
-// void print_int8x16(int8x16_t v) {
-//     int8_t tmp[16];
-//     vst1q_s8(tmp, v);
-//     for (int i = 0; i < 16; i++) {
-//         printf("%d ", tmp[i]);
-//     }
-//     printf("\n");
-// }
-//
-//
-// int main() {
-//     int16_t act[26];
-//     // 示例：生成 0~25
-//     for (int i = 0; i < 26; i++) {
-//         act[i] = (int16_t)(i);
-//     }
-//
-//     // 打印数组
-//     for (int i = 0; i < 26; i++) {
-//         if (i % 6 == 0) {
-//             printf("[");
-//         }
-//         printf(" %d ", act[i]);
-//         if (i % 6 == 5) {
-//             printf("]");
-//         }
-//     }
-//     printf("\n\n");
-//
-//
-//     int8x16_pair lut[4];
-//
-//     printf("%d\n",generate_lut_int8(act, 26, lut));
-//
-//     for (int i = 0; i < 5; i++) {
-//         printf("%d:\n", i);
-//         print_int8x16(lut[i].v[0]);
-//         print_int8x16(lut[i].v[1]);
-//     }
-//
-//     return 0;
-// }
+static inline void set_block_elem(block_ifairy *b, int idx256, uint8_t code) {
+    int byte_idx = idx256 >> 2; /* 4 elems per byte */
+    int shift = (3 - (idx256 & 3)) * 2;
+    b->qs[byte_idx] &= (uint8_t)~(3u << shift);
+    b->qs[byte_idx] |= (uint8_t)((code & 3u) << shift);
+}
 
+int read_matrix_01_txt(const char *path, block_ifairy *mat, int rows) {
+    FILE *f = fopen(path, "r");
+    if (!f) return -1;
+    char *line = NULL;
+    size_t linecap = 0;
+    ssize_t linelen;
+    int row = 0;
 
-int main() {
-    uint8x16_t iweight_3x16 = {0, 15, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-
-    int8x16_t ret_r_tmp0 = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-    int8x16_t ret_i_tmp0 = vaddq_s8(vdupq_n_u8(100), ret_r_tmp0);
-    uint8x16_t index = vandq_u8(iweight_3x16, vdupq_n_u8(7));
-    int8x16x2_t ilut = {
-        ret_r_tmp0,
-        ret_i_tmp0,
-    };
-
-
-    int8x16_t r0 = vqtbl1q_s8(ilut.val[0], index); // 全部的16个数据在ilut0中的实部
-    int8x16_t i0 = vqtbl1q_s8(ilut.val[0], vaddq_u8(index, vdupq_n_u8(8))); // 全部的16个数据在ilut0中的虚部
-    int8x16_t r1 = vqtbl1q_s8(ilut.val[1], index); // 全部的16个数据在ilut1中的实部
-    int8x16_t i1 = vqtbl1q_s8(ilut.val[1], vaddq_u8(index, vdupq_n_u8(8))); // 全部的16个数据在ilut1中的虚部
-
-
-
-    for (int i = 0; i < 16; i++) {
-        printf("%d %d\n", r0[i], i0[i]);
+    while (row < rows && (linelen = getline(&line, &linecap, f)) != -1) {
+        /* gather bits '0'/'1' only */
+        char bits[1024 + 8];
+        int bcnt = 0;
+        for (ssize_t i = 0; i < linelen && bcnt < 1024; ++i) {
+            if (line[i] == '0' || line[i] == '1') bits[bcnt++] = line[i];
+        }
+        if (bcnt < 1024) {
+            /* allow lines maybe concatenated across file; keep reading until enough */
+            while (bcnt < 1024 && (linelen = getline(&line, &linecap, f)) != -1) {
+                for (ssize_t i = 0; i < linelen && bcnt < 1024; ++i) {
+                    if (line[i] == '0' || line[i] == '1') bits[bcnt++] = line[i];
+                }
+            }
+        }
+        if (bcnt != 1024) {
+            free(line);
+            fclose(f);
+            return -2; /* not enough bits for a row */
+        }
+        /* pack 512 codes (two bits each) into two blocks */
+        for (int c = 0; c < 512; ++c) {
+            int bit_idx = c * 2;
+            uint8_t b0 = bits[bit_idx] - '0';
+            uint8_t b1 = bits[bit_idx + 1] - '0';
+            uint8_t code = (uint8_t)((b0 << 1) | b1);
+            int block = (c >= 256) ? 1 : 0;
+            int idx256 = c % 256;
+            set_block_elem(&mat[row * 2 + block], idx256, code);
+        }
+        row++;
     }
 
-    printf(" ===\n");
+    free(line);
+    fclose(f);
 
-    for (int i = 0; i < 16; i++) {
-        printf("%d %d\n", r1[i], i1[i]);
+    if (row != rows) return -3;
+    return 0;
+}
+
+int read_act_int8_txt(const char *path, int16_t *vec, int num_values) {
+    FILE *f = fopen(path, "r");
+    if (!f) return -1;
+    int count = 0;
+    long tmp;
+    while (count < num_values && fscanf(f, "%ld", &tmp) == 1) {
+        if (tmp < -32768L) tmp = -32768L;
+        if (tmp >  32767L) tmp =  32767L;
+        vec[count++] = (int16_t)tmp;
     }
-    
-    printf(" ===\n");
+    fclose(f);
+    return (count == num_values) ? 0 : -2;
+}
 
-    uint8x16_t mask = vceqq_u8(vandq_u8(iweight_3x16, vdupq_n_u8(8)), vdupq_n_u8(8));
+static void print_u8_binary(uint8_t v) {
+    for (int i = 7; i >= 0; --i) putchar((v & (1u << i)) ? '1' : '0');
+    putchar('\n');
+}
 
-
-    int8x16_t iret_r_tmp0 = vbslq_u8(mask, r1, r0);
-    int8x16_t iret_i_tmp0 = vbslq_u8(mask, i1, i0);
-
-    for (int i = 0; i < 16; i++) {
-        printf("%d %d %d\n", mask[i], iret_r_tmp0[i], iret_i_tmp0[i]);
-    }
-
+void test_lut(const block_ifairy *w, const int16_t *act, int m, int n) { // mxn * nx1
+    int8x16x2_t *lut = alloc_lut(n);
+    printf("%d\n", m);
+    generate_lut_int8(act, m, lut);
+    int32_t *dst = calloc(m, sizeof(int32_t));
+    free_lut(lut);
 }
 
 
+void test() {
+    const char *matrix_file = "./test_data/matrix_1024x1024.txt";
+    const char *act_file    = "./test_data/act_1024.txt";
 
+    const int ROWS = 1024;
 
+    block_ifairy *w = calloc((size_t)ROWS * 2, sizeof(block_ifairy));
+    if (!w) { fprintf(stderr, "OOM w\n"); return 1; }
+    int16_t *act = calloc((size_t)ROWS * 2, sizeof(int16_t));
+    if (!act) { fprintf(stderr, "OOM act\n"); return 1; }
+    int rc = read_matrix_01_txt(matrix_file, w, ROWS);
+    if (rc != 0) { fprintf(stderr, "Failed to read matrix (%d)\n", rc); free(w); return 2; }
+    rc = read_act_int8_txt(act_file, act, ROWS*2);
+    if (rc != 0) { fprintf(stderr, "Failed to read act (%d)\n", rc); free(w); return 2; }
 
+    test_lut(w, act, ROWS, ROWS);
+    
 
-/*
-        int16x4_t v0[16] =
-        {
-                // (-1, -1, -1)
-                -r0 - r1 - r2,
-                -i0 - i1 - i2,
+    free(w);
+    free(act);
+    return;
+}
 
-                // (-1, -1, 1)
-                -r0 - r1 + r2,
-                -i0 - i1 + i2,
-
-                // (-1, -1, -i)
-                -r0 - r1 + i2,
-                -i0 - i1 - r2,
-
-                // (-1, -1, i)
-                -r0 - r1 - i2,
-                -i0 - i1 + r2,
-
-                // (-1, 1, -1)
-                -r0 + r1 - r2,
-                -i0 + i1 - i2,
-
-                // (-1, 1, 1)
-                -r0 + r1 + r2,
-                -i0 + i1 + i2,
-
-                // (-1, 1, -i)
-                -r0 + r1 + i2,
-                -i0 + i1 - r2,
-
-                // (-1, 1, i)
-                -r0 + r1 - i2,
-                -i0 + i1 + r2
-        };
-
-
-        int16x4_t v1[16] = {
-                // (-1, -i, -1)
-                -r0 + i1 - r2,
-                -i0 - r1 - i2,
-
-                // (-1, -i, 1)
-                -r0 + i1 + r2,
-                -i0 - r1 + i2,
-
-                // (-1, -i, -i)
-                -r0 + i1 - i2,
-                -i0 - r1 - r2,
-
-                // (-1, -i, i)
-                -r0 + i1 + i2,
-                -i0 - r1 + r2,
-
-                // (-1, i, -1)
-                -r0 - i1 - r2,
-                -i0 + r1 - i2,
-
-                // (-1, i, 1)
-                -r0 - i1 + r2,
-                -i0 + r1 + i2,
-
-                // (-1, i, -i)
-                -r0 - i1 - i2,
-                -i0 + r1 - r2,
-
-                // (-1, i, i)
-                -r0 - i1 + i2,
-                -i0 + r1 + r2
-        };
-*/
+int main() {
+    uint8_t x = 0b10110011;
+    int16_t y[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+    int32x2_t z = mul_mat_1x4_4x1(x, y)
+    printf("%d %d\n", z[0], z[1]);
+    return 0;
+}

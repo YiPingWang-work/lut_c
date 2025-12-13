@@ -26,26 +26,25 @@ void transpose_4x16_to_16x4(int16x4_t src[16], int8x16_t dst[4]) {
     }
 }
 
-int16x4_t get_activation(const int16_t *activation, int i, int m) {
+int16x4_t get_act(const int16_t *act, int i, int m) {
+    m *= 2;
     int16_t ret[4] = {0, 0, 0, 0};
-    if (i < m) ret[0] = activation[i];
-    if (i + 6 < m) ret[1] = activation[i + 6];
-    if (i + 12 < m) ret[2] = activation[i + 12];
-    if (i + 18 < m) ret[3] = activation[i + 18];
+    if (i < m) ret[0] = act[i];
+    if (i + 6 < m) ret[1] = act[i + 6];
+    if (i + 12 < m) ret[2] = act[i + 12];
+    if (i + 18 < m) ret[3] = act[i + 18];
     return vld1_s16(ret);
 }
 
 
-void generate_lut_int8(const int16_t *activation, int m, int8x16x2_t *lut) {
-    m *= 2;
-    int max_lut_m = (m + 5) / 6;
-    for (int i = 0; i < m+24; i += 24) {
-        int16x4_t r0 = get_activation(activation, i,   m);
-        int16x4_t i0 = get_activation(activation, i+1, m);
-        int16x4_t r1 = get_activation(activation, i+2, m);
-        int16x4_t i1 = get_activation(activation, i+3, m);
-        int16x4_t r2 = get_activation(activation, i+4, m);
-        int16x4_t i2 = get_activation(activation, i+5, m);
+void generate_lut_int8(const int16_t *act, int m, int8x16x2_t *lut) {
+    for (int i = 0; i < 2*m; i += 24) { // 每次处理12个复数
+        int16x4_t r0 = get_act(act, i,   m);
+        int16x4_t i0 = get_act(act, i+1, m);
+        int16x4_t r1 = get_act(act, i+2, m);
+        int16x4_t i1 = get_act(act, i+3, m);
+        int16x4_t r2 = get_act(act, i+4, m);
+        int16x4_t i2 = get_act(act, i+5, m);
 
         int16x4_t val0[16] = {
             // (-1, -1, -1)
@@ -119,10 +118,10 @@ void generate_lut_int8(const int16_t *activation, int m, int8x16x2_t *lut) {
         transpose_4x16_to_16x4(val0, t0);
         transpose_4x16_to_16x4(val1, t1);
 
-        if (i/6     < max_lut_m) { lut[i/6    ].val[0] = t0[0]; lut[i/6    ].val[1] = t1[0]; }
-        if (i/6 + 1 < max_lut_m) { lut[i/6 + 1].val[0] = t0[1]; lut[i/6 + 1].val[1] = t1[1]; }
-        if (i/6 + 2 < max_lut_m) { lut[i/6 + 2].val[0] = t0[2]; lut[i/6 + 2].val[1] = t1[2]; }
-        if (i/6 + 3 < max_lut_m) { lut[i/6 + 3].val[0] = t0[3]; lut[i/6 + 3].val[1] = t1[3]; }
+        lut[i/6    ].val[0] = t0[0]; lut[i/6    ].val[1] = t1[0];
+        lut[i/6 + 1].val[0] = t0[1]; lut[i/6 + 1].val[1] = t1[1];
+        lut[i/6 + 2].val[0] = t0[2]; lut[i/6 + 2].val[1] = t1[2];
+        lut[i/6 + 3].val[0] = t0[3]; lut[i/6 + 3].val[1] = t1[3];
     }
     return;
 }
@@ -171,8 +170,8 @@ uint8_t get_3x1(uint32_t iweght_1x12, int i) {
     return (iweght_1x12 >> ((3-i)*6)) & 0x3F;
 }
 
-void mul_mat_nxm_mx1_with_scale(block_ifairy *weight, int block_n, int row_begin, int row_end, int8x16x2_t *lut, uint8_t *lut_scale, int32_t *dst) {
-    for (int row = row_begin; row < row_end; row+=16) {
+void mul_mat_nxm_mx1_with_lut(block_ifairy *weight, int block_n, int row_begin, int row_end, int8x16x2_t *lut, int32_t *dst) {
+    for (int row = row_begin; row <= row_end; row+=16) {
         for (int block = 0; block < block_n; block++) {
             for (int i = 0; i < QK_K; i+=3) {
                 uint32_t iweight_1x12[16];
@@ -220,3 +219,61 @@ void mul_mat_nxm_mx1_with_scale(block_ifairy *weight, int block_n, int row_begin
     }
 }
 
+int8x16x2_t *alloc_lut(int m) {
+    return calloc((m+11)/3, sizeof(int8x16x2_t));
+}
+
+void free_lut(int8x16x2_t *lut) {
+    free(lut);
+}
+
+int32x2_t mul_mat_1x4_4x1(uint8_t a, int16_t *b) {
+    int32_t acc_r = 0;
+    int32_t acc_i = 0;
+
+    for (int k = 0; k < 4; k++) {
+        uint8_t code = (a >> (2 * k)) & 0x3;
+
+        int16_t xr = b[2 * k];
+        int16_t xi = b[2 * k + 1];
+
+        switch (code) {
+        case 0b00:  // -1
+            acc_r += -xr;
+            acc_i += -xi;
+            break;
+
+        case 0b01:  // +1
+            acc_r += xr;
+            acc_i += xi;
+            break;
+
+        case 0b10:  // -i -> conj = +i
+            acc_r += -xi;
+            acc_i +=  xr;
+            break;
+
+        case 0b11:  // +i -> conj = -i
+            acc_r +=  xi;
+            acc_i += -xr;
+            break;
+        }
+    }
+
+    return vset_lane_s32(acc_i,
+           vset_lane_s32(acc_r, vdup_n_s32(0), 0),
+           1);
+}
+
+void mul_mat_nxm_mx1(block_ifairy *weight, int block_n, int row_begin, int row_end, int16_t *act, int32_t *dst) {
+    for (int row = row_begin; row <= row_end; row++) {
+        for (int block = 0; block < block_n; block++) {
+            for (int i = 0; i < QK_K/4; i++) {
+                uint8_t w4 = weight[row*block_n+block].qs[i];
+                int32x2_t ret = mul_mat_1x4_4x1(w4, act[2*row]);
+                dst[2*row] += (int32_t)ret[0];
+                dst[2*row+1] += (int32_t)ret[1];         
+            }
+        }
+    }
+}
