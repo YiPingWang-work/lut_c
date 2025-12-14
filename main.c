@@ -143,7 +143,7 @@ int test() {
     if (rc != 0) { fprintf(stderr, "Failed to read act (%d)\n", rc); free(w); return 2; }
 
     test_mul_mat(w, act);
-    printf("\n===================\n");
+    printf("\n=====\n");
     test_mul_mat_with_lut(w, act);
     
 
@@ -153,37 +153,36 @@ int test() {
 }
 
 
-void test_block_lut() {
-    uint8x16_t iweight_16x3 = {
-        0b00000000, // -1 -1 -1
-        0b00101111, // -i i i -> -1 1 1 -> 
-        0b00011110, // 1 i -i
-        0b00000000,
-        0b00000000,
-        0b00000000,
-        0b00000000,
-        0b00000000,
-        0b00000000,
-        0b00000000,
-        0b00000000,
-        0b00000000,
-        0b00000000,
-        0b00000000,
-        0b00000000,
-        0b00000000,
-    };
-    int8x16x2_t ilut = {
-        (int8x16_t){1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-        (int8x16_t){101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116},
-    };
-    int8x16x2_t ans = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, ilut);
-    for (int i = 0; i < 16; i++) {
-        printf("%d: %d, %d\n", i, ans.val[0][i], ans.val[1][i]);
-    }
-    
-}
+// void test_block_lut() {
+//     uint8x16_t iweight_16x3 = {
+//         0b00000000, // -1 -1 -1
+//         0b00101111, // -i i i = a+bi -> -1 1 1 * (-i) = a+bi *(-i) = -b+ai 
+//         0b00011110, // 1 i -i -> -1 -i i
+//         0b00000000,
+//         0b00000000,
+//         0b00000000,
+//         0b00000000,
+//         0b00000000,
+//         0b00000000,
+//         0b00000000,
+//         0b00000000,
+//         0b00000000,
+//         0b00000000,
+//         0b00000000,
+//         0b00000000,
+//         0b00000000,
+//     };
+//     int8x16x2_t ilut = {
+//         (int8x16_t){1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+//         (int8x16_t){101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116},
+//     };
+//     int8x16x2_t ans = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, ilut);
+//     for (int i = 0; i < 16; i++) {
+//         printf("%d: %d, %d\n", i, ans.val[0][i], ans.val[1][i]);
+//     }
+// }
 
 int main() {
-    test_block_lut();
-    return 0;
+    // test_block_lut();
+    return test();
 }

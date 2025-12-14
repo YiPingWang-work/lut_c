@@ -15,7 +15,7 @@ def generate_act():
     output_file = "./test_data/act_1024.txt"
     with open(output_file, "w") as f:
         for i in range(row):
-            value = i%16+1
+            value = 1-(i%2)
             f.write(f"{value}\n")
 
 if __name__ == '__main__':
