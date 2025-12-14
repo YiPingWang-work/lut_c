@@ -35,7 +35,7 @@ int16x4_t get_act(const int16_t *act, int i, int m) {
     return vld1_s16(ret);
 }
 
-void generate_lut_int8(const int16_t *act, int m, int8x16x2_t *lut) {
+void generate_lut_int8(const int16_t *act, int m, int8x16x2_t *lut, float32x2_t *lut_scale) {
     for (int i = 0; i < 2*m; i += 24) { // 每次处理12个复数
         int16x4_t r0 = get_act(act, i,   m);
         int16x4_t i0 = get_act(act, i+1, m);
@@ -176,7 +176,7 @@ uint8_t get_3x1(uint32_t iweght_1x12, int i) {
     return (iweght_1x12 >> ((3-i)*6)) & 0x3F;
 }
 
-void mul_mat_nxm_mx1_with_lut(block_ifairy *weight, int block_n, int row_begin, int row_end, int8x16x2_t *lut, float *lut_scale, int32_t *dst) {
+void mul_mat_nxm_mx1_with_lut(block_ifairy *weight, int block_n, int row_begin, int row_end, int8x16x2_t *lut, float32x2_t *lut_scale, int32_t *dst) {
     for (int row = row_begin; row <= row_end; row+=16) {
         for (int block = 0; block < block_n; block++) {
             for (int i = 0; i < QK_K/4; i+=3) {

@@ -19,8 +19,8 @@ typedef struct {
 
 int8x16x2_t *alloc_lut(int m);
 void free_lut(int8x16x2_t *lut);
-void generate_lut_int8(const int16_t *act, int m, int8x16x2_t *lut);
-void mul_mat_nxm_mx1_with_lut(block_ifairy *weight, int block_n, int row_begin, int row_end, int8x16x2_t *lut, float *lut_scale, int32_t *dst);
+void generate_lut_int8(const int16_t *act, int m, int8x16x2_t *lut, float32x2_t *lut_scale);
+void mul_mat_nxm_mx1_with_lut(block_ifairy *weight, int block_n, int row_begin, int row_end, int8x16x2_t *lut, float32x2_t *lut_scale, int32_t *dst);
 void mul_mat_nxm_mx1(block_ifairy *weight, int block_n, int row_begin, int row_end, int16_t *act, int32_t *dst);
 
 #endif

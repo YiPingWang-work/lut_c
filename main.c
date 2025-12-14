@@ -109,13 +109,13 @@ int write_to_file_int8x16x2_t(const char *filename, int index, int8x16x2_t v) {
 
 void test_mul_mat_with_lut(const block_ifairy *w, const int16_t *act) { // mxn * nx1
     int8x16x2_t *lut = alloc_lut(1024);
-    generate_lut_int8(act, 1024, lut);
+    generate_lut_int8(act, 1024, lut, NULL);
     // 输出lut到文件中
     for (int i = 0; i < (1024+12)/3; i++) {
         write_to_file_int8x16x2_t("./test_data/lut.txt", i, lut[i]);
     }
     int32_t *dst = calloc(2048, sizeof(int32_t));
-    mul_mat_nxm_mx1_with_lut(w, 2, 0, 1023, lut, dst);
+    mul_mat_nxm_mx1_with_lut(w, 2, 0, 1023, lut, NULL, dst);
     free_lut(lut);
     free(dst);
 }
