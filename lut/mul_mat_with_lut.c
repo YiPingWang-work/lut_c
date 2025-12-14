@@ -46,72 +46,59 @@ void generate_lut_int8(const int16_t *act, int m, int8x16x2_t *lut) {
         int16x4_t r2 = get_act(act, i+4, m);
         int16x4_t i2 = get_act(act, i+5, m);
 
-        int16x4_t val0[16] = {
+        int16x4_t real[16] = {
             // (-1, -1, -1)
             vsub_s16(vsub_s16(vneg_s16(r0), r1), r2),
-            vsub_s16(vsub_s16(vneg_s16(i0), i1), i2),
-
             // (-1, -1,  1)
             vadd_s16(vsub_s16(vneg_s16(r0), r1), r2),
-            vadd_s16(vsub_s16(vneg_s16(i0), i1), i2),
-
             // (-1, -1, -i)  → conj(-i) = +i
             vsub_s16(vsub_s16(vneg_s16(r0), r1), i2),
-            vadd_s16(vsub_s16(vneg_s16(i0), i1), r2),
-
             // (-1, -1,  i)  → conj(i) = -i
             vadd_s16(vsub_s16(vneg_s16(r0), r1), i2),
-            vsub_s16(vsub_s16(vneg_s16(i0), i1), r2),
-
             // (-1,  1, -1)
             vsub_s16(vadd_s16(vneg_s16(r0), r1), r2),
-            vsub_s16(vadd_s16(vneg_s16(i0), i1), i2),
-
             // (-1,  1,  1)
             vadd_s16(vadd_s16(vneg_s16(r0), r1), r2),
-            vadd_s16(vadd_s16(vneg_s16(i0), i1), i2),
-
             // (-1,  1, -i) → conj(-i) = +i
             vsub_s16(vadd_s16(vneg_s16(r0), r1), i2),
-            vadd_s16(vadd_s16(vneg_s16(i0), i1), r2),
-
             // (-1,  1,  i) → conj(i) = -i
             vadd_s16(vadd_s16(vneg_s16(r0), r1), i2),
-            vsub_s16(vadd_s16(vneg_s16(i0), i1), r2),
-        };
-
-        int16x4_t val1[16] = {
             // (-1, -i, -1) → conj(-i) = +i
             vsub_s16(vadd_s16(vneg_s16(r0), i1), r2),
-            vadd_s16(vsub_s16(vneg_s16(i0), r1), i2),
-
             // (-1, -i,  1)
             vadd_s16(vadd_s16(vneg_s16(r0), i1), r2),
-            vsub_s16(vadd_s16(vneg_s16(i0), r1), i2),
-
             // (-1, -i, -i) → conj(-i) = +i
             vsub_s16(vadd_s16(vneg_s16(r0), i1), i2),
-            vadd_s16(vsub_s16(vneg_s16(i0), r1), r2),
-
             // (-1, -i,  i) → conj(i) = -i
             vadd_s16(vadd_s16(vneg_s16(r0), i1), i2),
-            vsub_s16(vsub_s16(vneg_s16(i0), r1), r2),
-
             // (-1,  i, -1) → conj(i) = -i
             vsub_s16(vsub_s16(vneg_s16(r0), i1), r2),
-            vadd_s16(vadd_s16(vneg_s16(i0), r1), i2),
-
             // (-1,  i,  1)
             vadd_s16(vsub_s16(vneg_s16(r0), i1), r2),
-            vsub_s16(vadd_s16(vneg_s16(i0), r1), i2),
-
             // (-1,  i, -i) → conj(-i) = +i
             vsub_s16(vsub_s16(vneg_s16(r0), i1), i2),
-            vadd_s16(vadd_s16(vneg_s16(i0), r1), r2),
-
             // (-1,  i,  i) → conj(i) = -i
             vadd_s16(vsub_s16(vneg_s16(r0), i1), i2),
+        };
+
+        int16x4_t imag[16] = {
+            vsub_s16(vsub_s16(vneg_s16(i0), i1), i2),
+            vadd_s16(vsub_s16(vneg_s16(i0), i1), i2),
+            vadd_s16(vsub_s16(vneg_s16(i0), i1), r2),
+            vsub_s16(vsub_s16(vneg_s16(i0), i1), r2),
+            vsub_s16(vadd_s16(vneg_s16(i0), i1), i2),
+            vadd_s16(vadd_s16(vneg_s16(i0), i1), i2),
+            vadd_s16(vadd_s16(vneg_s16(i0), i1), r2),
+            vsub_s16(vadd_s16(vneg_s16(i0), i1), r2),
+            vadd_s16(vsub_s16(vneg_s16(i0), r1), i2),
+            vsub_s16(vadd_s16(vneg_s16(i0), r1), i2),
+            vadd_s16(vsub_s16(vneg_s16(i0), r1), r2),
             vsub_s16(vsub_s16(vneg_s16(i0), r1), r2),
+            vadd_s16(vadd_s16(vneg_s16(i0), r1), i2),
+            vsub_s16(vadd_s16(vneg_s16(i0), r1), i2),
+            vadd_s16(vadd_s16(vneg_s16(i0), r1), r2),
+            vsub_s16(vsub_s16(vneg_s16(i0), r1), r2),
+
         };
 
         int8x16_t t0[4], t1[4];
@@ -127,7 +114,13 @@ void generate_lut_int8(const int16_t *act, int m, int8x16x2_t *lut) {
 }
 
 
-int8x16x2_t mul_mat_block_16x3_3x1(uint8x16_t iweight_16x3, int8x16x2_t ilut) {
+int8x16x2_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x2_t ilut) {
+
+    uint8x16x2_t ilut_all[4] = {
+        ilut,
+        veorq_u8(iweight_16x3, vdupq_n_u8(0b00101010)),
+        
+    }
     // 生成index和flag
     uint8x16_t index = vandq_u8(iweight_16x3, vdupq_n_u8(7)); //  00 01 11
     uint8x16_t flag = vshrq_n_u8(vandq_u8(iweight_16x3, vdupq_n_u8(48)), 4); // 11 00 00
@@ -203,11 +196,10 @@ void mul_mat_nxm_mx1_with_lut(block_ifairy *weight, int block_n, int row_begin, 
                         get_3x1(iweight_1x12[14], ii),
                         get_3x1(iweight_1x12[15], ii),
                     };
-                    int8x16x2_t iret_ri = mul_mat_block_16x3_3x1(iweight_16x3, lut[block*QK_K+i*4+ii]);
+                    int8x16x2_t iret_ri = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, lut[block*QK_K+i*4+ii]);
                     int8x16_t iret_r = iret_ri.val[0];
                     int8x16_t iret_i = iret_ri.val[1];
                     // TODO 反量化
-
                     // 回送结果
                     for (int j = 0; j < 16; j++) {
                         dst[2*(row+j)] += (int32_t)iret_r[j];
@@ -216,6 +208,10 @@ void mul_mat_nxm_mx1_with_lut(block_ifairy *weight, int block_n, int row_begin, 
                 }
             }
         }
+    }
+    for (int row = row_begin; row <= row_end; row++) {
+        if (row < 10) printf("%d:   %d, %d\n", row, dst[2*row], dst[2*row+1]);
+        if (row > 1000) printf("%d:   %d, %d\n", row, dst[2*row], dst[2*row+1]);
     }
 }
 
@@ -227,12 +223,12 @@ void free_lut(int8x16x2_t *lut) {
     free(lut);
 }
 
-int32x2_t mul_mat_1x4_4x1(uint8_t a, int16_t *b) {
+int32x2_t mul_mat_block_1x4_4x1(uint8_t a, int16_t *b) {
     int32_t acc_r = 0;
     int32_t acc_i = 0;
 
     for (int k = 0; k < 4; k++) {
-        uint8_t code = (a >> (2 * k)) & 0x3;
+        uint8_t code = (a >> (2 * (3-k))) & 0x3;
 
         int16_t xr = b[2 * k];
         int16_t xi = b[2 * k + 1];
@@ -242,24 +238,20 @@ int32x2_t mul_mat_1x4_4x1(uint8_t a, int16_t *b) {
             acc_r += -xr;
             acc_i += -xi;
             break;
-
         case 0b01:  // +1
             acc_r += xr;
             acc_i += xi;
             break;
-
         case 0b10:  // -i -> conj = +i
             acc_r += -xi;
             acc_i +=  xr;
             break;
-
         case 0b11:  // +i -> conj = -i
             acc_r +=  xi;
             acc_i += -xr;
             break;
         }
     }
-
     return vset_lane_s32(acc_i,
            vset_lane_s32(acc_r, vdup_n_s32(0), 0),
            1);
@@ -270,10 +262,22 @@ void mul_mat_nxm_mx1(block_ifairy *weight, int block_n, int row_begin, int row_e
         for (int block = 0; block < block_n; block++) {
             for (int i = 0; i < QK_K/4; i++) {
                 uint8_t w4 = weight[row*block_n+block].qs[i];
-                int32x2_t ret = mul_mat_1x4_4x1(w4, act[2*row]);
+                int16_t a4[8] = {
+                    act[block*QK_K+i*8],
+                    act[block*QK_K+i*8+1],
+                    act[block*QK_K+i*8+2],
+                    act[block*QK_K+i*8+3],
+                    act[block*QK_K+i*8+4],
+                    act[block*QK_K+i*8+5],
+                    act[block*QK_K+i*8+6],
+                    act[block*QK_K+i*8+7],
+                };
+                int32x2_t ret = mul_mat_block_1x4_4x1(w4, a4);
                 dst[2*row] += (int32_t)ret[0];
                 dst[2*row+1] += (int32_t)ret[1];         
             }
         }
+        if (row < 10) printf("%d:   %d, %d\n", row, dst[2*row], dst[2*row+1]);
+        if (row > 1000) printf("%d:   %d, %d\n", row, dst[2*row], dst[2*row+1]);
     }
 }

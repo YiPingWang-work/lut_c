@@ -7,16 +7,17 @@ def generate_matrix():
     output_file = "./test_data/matrix_1024x1024.txt"
     with open(output_file, "w") as f:
         for _ in range(rows):
-            row = [str(random.randint(0, 1)) for _ in range(cols)]
+            row = [str(0) for _ in range(cols)]
             f.write("".join(row) + "\n")
 
 def generate_act():
     row = 2048
     output_file = "./test_data/act_1024.txt"
     with open(output_file, "w") as f:
-        for _ in range(row):
-            value = random.randint(-128, 127)
+        for i in range(row):
+            value = i%16+1
             f.write(f"{value}\n")
 
 if __name__ == '__main__':
     generate_act()
+    generate_matrix()

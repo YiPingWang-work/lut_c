@@ -79,16 +79,55 @@ static void print_u8_binary(uint8_t v) {
     putchar('\n');
 }
 
-void test_lut(const block_ifairy *w, const int16_t *act, int m, int n) { // mxn * nx1
-    int8x16x2_t *lut = alloc_lut(n);
-    printf("%d\n", m);
-    generate_lut_int8(act, m, lut);
-    int32_t *dst = calloc(m, sizeof(int32_t));
+int write_to_file_int8x16x2_t(const char *filename, int index, int8x16x2_t v) {
+    FILE *fp = fopen(filename, "a");   // 追加写
+    if (!fp) {
+        perror("fopen");
+        return -1;
+    }
+
+    int8_t buf0[16];
+    int8_t buf1[16];
+
+    vst1q_s8(buf0, v.val[0]);
+    vst1q_s8(buf1, v.val[1]);
+
+    fprintf(fp, "%d vec0: ", index);
+    for (int i = 0; i < 16; i++) {
+        fprintf(fp, "%4d", buf0[i]);
+    }
+
+    fprintf(fp, "\n%d vec1: ", index);
+    for (int i = 0; i < 16; i++) {
+        fprintf(fp, "%4d", buf1[i]);
+    }
+    fprintf(fp, "\n");
+
+    fclose(fp);
+    return 0;
+}
+
+void test_mul_mat_with_lut(const block_ifairy *w, const int16_t *act) { // mxn * nx1
+    int8x16x2_t *lut = alloc_lut(1024);
+    generate_lut_int8(act, 1024, lut);
+    // 输出lut到文件中
+    for (int i = 0; i < (1024+12)/3; i++) {
+        write_to_file_int8x16x2_t("./test_data/lut.txt", i, lut[i]);
+    }
+    int32_t *dst = calloc(2048, sizeof(int32_t));
+    mul_mat_nxm_mx1_with_lut(w, 2, 0, 1023, lut, dst);
     free_lut(lut);
+    free(dst);
+}
+
+void test_mul_mat(const block_ifairy *w, const int16_t *act) {
+    int32_t *dst = calloc(2048, sizeof(int32_t));
+    mul_mat_nxm_mx1(w, 2, 0, 1023, act, dst);
+    free(dst);
 }
 
 
-void test() {
+int test() {
     const char *matrix_file = "./test_data/matrix_1024x1024.txt";
     const char *act_file    = "./test_data/act_1024.txt";
 
@@ -103,18 +142,48 @@ void test() {
     rc = read_act_int8_txt(act_file, act, ROWS*2);
     if (rc != 0) { fprintf(stderr, "Failed to read act (%d)\n", rc); free(w); return 2; }
 
-    test_lut(w, act, ROWS, ROWS);
+    test_mul_mat(w, act);
+    printf("\n===================\n");
+    test_mul_mat_with_lut(w, act);
     
 
     free(w);
     free(act);
-    return;
+    return 0;
+}
+
+
+void test_block_lut() {
+    uint8x16_t iweight_16x3 = {
+        0b00000000, // -1 -1 -1
+        0b00101111, // -i i i -> -1 1 1 -> 
+        0b00011110, // 1 i -i
+        0b00000000,
+        0b00000000,
+        0b00000000,
+        0b00000000,
+        0b00000000,
+        0b00000000,
+        0b00000000,
+        0b00000000,
+        0b00000000,
+        0b00000000,
+        0b00000000,
+        0b00000000,
+        0b00000000,
+    };
+    int8x16x2_t ilut = {
+        (int8x16_t){1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+        (int8x16_t){101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116},
+    };
+    int8x16x2_t ans = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, ilut);
+    for (int i = 0; i < 16; i++) {
+        printf("%d: %d, %d\n", i, ans.val[0][i], ans.val[1][i]);
+    }
+    
 }
 
 int main() {
-    uint8_t x = 0b10110011;
-    int16_t y[8] = {1, 2, 3, 4, 5, 6, 7, 8};
-    int32x2_t z = mul_mat_1x4_4x1(x, y)
-    printf("%d %d\n", z[0], z[1]);
+    test_block_lut();
     return 0;
 }
