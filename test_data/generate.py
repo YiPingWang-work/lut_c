@@ -2,21 +2,28 @@ import os
 import random
 
 def generate_matrix():
-    rows = 1024
-    cols = 1024
-    output_file = "./test_data/matrix_1024x1024.txt"
+    rows = 10240
+    cols = 10240
+    output_file = "./test_data/w.txt"
     with open(output_file, "w") as f:
         for _ in range(rows):
-            row = [str(0) for _ in range(cols)]
+            row = [f"{random.randint(0, 1)}" for _ in range(cols*2)]
             f.write("".join(row) + "\n")
 
 def generate_act():
-    row = 2048
-    output_file = "./test_data/act_1024.txt"
+    row = 20480
+    output_file = "./test_data/act.txt"
+    real = 0
+    imag = 0
     with open(output_file, "w") as f:
         for i in range(row):
-            value = 1-(i%2)
+            value = random.randint(-40, 40)
+            if i%2 == 0:
+                real += value
+            else:
+                imag += value
             f.write(f"{value}\n")
+    print(f"Final accumulated complex value: {real} + {imag}i")
 
 if __name__ == '__main__':
     generate_act()

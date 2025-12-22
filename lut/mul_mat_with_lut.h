@@ -17,10 +17,15 @@ typedef struct {
     ggml_half d_real, d_imag;
 } block_ifairy;
 
-int8x16x2_t *alloc_lut(int m);
-void free_lut(int8x16x2_t *lut);
-void generate_lut_int8(const int16_t *act, int m, int8x16x2_t *lut, float32x2_t *lut_scale);
-void mul_mat_nxm_mx1_with_lut(block_ifairy *weight, int block_n, int row_begin, int row_end, int8x16x2_t *lut, float32x2_t *lut_scale, int32_t *dst);
+typedef struct {
+    int8x16x2_t v[(QK_K+2)/3]; // 每3个复数一个lut条目(实部+虚部)，256个复数需要86个条目
+    ggml_half d_real, d_imag;
+} lut_block;
+
+lut_block *alloc_lut(int m);
+void free_lut(lut_block *lut);
+void generate_lut_int8(const int16_t *act, int m, lut_block *lut);
+void mul_mat_nxm_mx1_with_lut(block_ifairy *weight, int block_n, int row_begin, int row_end, lut_block *lut, float32x2_t *lut_scale, int32_t *dst);
 void mul_mat_nxm_mx1(block_ifairy *weight, int block_n, int row_begin, int row_end, int16_t *act, int32_t *dst);
 
 #endif
