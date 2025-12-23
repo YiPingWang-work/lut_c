@@ -10,6 +10,8 @@
 #define ROWS 10240
 #define COLS 10240
 
+#define RANDMAX 255.0
+
 void print_time_ms() {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
@@ -27,6 +29,9 @@ void print_time_ms() {
            ts.tv_nsec / 1000000);
 }
 
+static inline float rand_float_001_2() {
+    return 0.01f + (1.0f - 0.01f) * ((float)random() / (float)RAND_MAX);
+}
 
 int load_w_bit(const char *path, block_ifairy *w) {
     FILE *fp = fopen(path, "r");
@@ -64,9 +69,10 @@ int load_w_bit(const char *path, block_ifairy *w) {
 
         // 一个 block 完成：512 bit
         if (bit_cnt == QK_K * 2) {
-            w[block_idx].d_real = 0;
-            w[block_idx].d_imag = 0;
-
+            w[block_idx].d_real = rand_float_001_2();
+            w[block_idx].d_imag = rand_float_001_2();
+            // printf("block %d: d_real=%f, d_imag=%f\n",
+            //        block_idx, w[block_idx].d_real, w[block_idx].d_imag);
             block_idx++;
             bit_cnt = 0;
             elem_idx = 0;
@@ -86,15 +92,13 @@ int load_w_bit(const char *path, block_ifairy *w) {
 }
 
 
-int load_act_int8(const char *path, int16_t *vec, int num_values) {
+int load_act_float(const char *path, float *vec, int num_values) {
     FILE *f = fopen(path, "r");
     if (!f) return -1;
     int count = 0;
-    long tmp;
-    while (count < num_values && fscanf(f, "%ld", &tmp) == 1) {
-        if (tmp < -32768L) tmp = -32768L;
-        if (tmp >  32767L) tmp =  32767L;
-        vec[count++] = (int16_t)tmp;
+    float tmp;
+    while (count < num_values && fscanf(f, "%f", &tmp) == 1) {
+        vec[count++] = tmp;
     }
     fclose(f);
     return (count == num_values) ? 0 : -2;
@@ -137,29 +141,31 @@ int write_to_file_int8x16x2_t(const char *filename, int block, int begin, int en
 }
 
 
-void compare(const block_ifairy *w, const int16_t *act) {
-    int32_t *dst1 = calloc(COLS*2, sizeof(int32_t));
-    int32_t *dst2 = calloc(COLS*2, sizeof(int32_t));
+void compare(const block_ifairy *w, const float *act) {
+    float *dst1 = calloc(COLS*2, sizeof(float));
+    float *dst2 = calloc(COLS*2, sizeof(float));
     
     printf("查表计算:\n");
     print_time_ms();
     lut_block *lut = alloc_lut(ROWS);
     generate_lut_int8(act, ROWS, lut);
-    mul_mat_nxm_mx1_with_lut(w, 4, 0, ROWS-1, lut, NULL, dst2);
+    mul_mat_nxm_mx1_with_lut(w, COLS, 0, ROWS-1, lut, dst2);
     print_time_ms();
     free_lut(lut);
 
     printf("普通计算:\n");
     print_time_ms();
-    mul_mat_nxm_mx1(w, 4, 0, ROWS-1, act, dst1);
+    mul_mat_nxm_mx1(w, COLS, 0, ROWS-1, act, dst1);
     print_time_ms();
 
     
     int errors = 0;
     for (int i = 0; i < COLS*2; i++) {
-        if (dst1[i] != dst2[i]) {
-            printf("❌ %d: dst1=%d, dst2=%d\n", i, dst1[i], dst2[i]);
+        if ((dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 1e-2) {
+            printf("❌ %d: dst1=%f, dst2=%f\n", i, dst1[i], dst2[i]);
             errors++;
+        } else {
+            // printf("✅ %d: dst1=%f, dst2=%f\n", i, dst1[i], dst2[i]);
         }
     }
     if (errors == 0) {
@@ -172,19 +178,31 @@ void compare(const block_ifairy *w, const int16_t *act) {
     free(dst2);
 }
 
+void sample(const block_ifairy *w, const float *act) {
+    float *dst2 = calloc(COLS*2, sizeof(float));
+    lut_block *lut = alloc_lut(ROWS);
+    while(1) {
+        generate_lut_int8(act, ROWS, lut);
+        mul_mat_nxm_mx1_with_lut(w, COLS, 0, ROWS-1, lut, dst2);
+    }
+    free_lut(lut);
+    free(dst2);
+}
+
 int main() {
     const char *matrix_file = "./test_data/w.txt";
     const char *act_file    = "./test_data/act.txt";
 
     block_ifairy *w = calloc((size_t)ROWS * 4, sizeof(block_ifairy));
     if (!w) { fprintf(stderr, "OOM w\n"); return 1; }
-    int16_t *act = calloc((size_t)ROWS * 2, sizeof(int16_t));
+    float *act = calloc((size_t)ROWS * 2, sizeof(float));
     if (!act) { fprintf(stderr, "OOM act\n"); return 1; }
     int rc = load_w_bit(matrix_file, w);
     if (rc != 0) { fprintf(stderr, "Failed to read matrix (%d)\n", rc); free(w); return 2; }
-    rc = load_act_int8(act_file, act, ROWS*2);
+    rc = load_act_float(act_file, act, ROWS*2);
     if (rc != 0) { fprintf(stderr, "Failed to read act (%d)\n", rc); free(w); return 2; }
-    compare(w, act);
+    // compare(w, act);
+    sample(w, act);
     free(w);
     free(act);
     return 0;

@@ -7,25 +7,26 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdint.h>
+#include <math.h>
 
 #define QK_K 256
-typedef uint16_t ggml_half;
+// typedef uint16_t ggml_half;
 
 
 typedef struct {
     uint8_t qs[QK_K/4]; // 2 bits per element
-    ggml_half d_real, d_imag;
+    float d_real, d_imag;
 } block_ifairy;
 
 typedef struct {
     int8x16x2_t v[(QK_K+2)/3]; // 每3个复数一个lut条目(实部+虚部)，256个复数需要86个条目
-    ggml_half d_real, d_imag;
+    float d_real, d_imag;
 } lut_block;
 
 lut_block *alloc_lut(int m);
 void free_lut(lut_block *lut);
-void generate_lut_int8(const int16_t *act, int m, lut_block *lut);
-void mul_mat_nxm_mx1_with_lut(block_ifairy *weight, int block_n, int row_begin, int row_end, lut_block *lut, float32x2_t *lut_scale, int32_t *dst);
-void mul_mat_nxm_mx1(block_ifairy *weight, int block_n, int row_begin, int row_end, int16_t *act, int32_t *dst);
+void generate_lut_int8(const float *act, int m, lut_block *lut);
+void mul_mat_nxm_mx1_with_lut(const block_ifairy *weight, int cols, int row_begin, int row_end, const lut_block *lut, float *dst);
+void mul_mat_nxm_mx1(const block_ifairy *weight, int block_n, int row_begin, int row_end, const float *act, float *dst);
 
 #endif
