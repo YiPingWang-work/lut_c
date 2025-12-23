@@ -207,141 +207,6 @@ static inline int8x16x2_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x
 }
 
 
-static inline uint32x4x4_t get_iweight_1x12(const block_ifairy *w, int row, int block, int block_n, int i) __attribute__((always_inline));
-static inline uint32x4x4_t get_iweight_1x12(const block_ifairy *w, int row, int block, int block_n, int i) {
-    uint32x4x4_t iweight_1x12;
-    const block_ifairy *w0;
-    uint32x4_t v0, v1, v2;
-    if (i + 3 >= QK_K / 4) {
-        for (int k = 0; k < 4; k++) {
-            w0 = &w[(row + 4*k) * block_n + block];
-            v0 = (uint32x4_t){
-                w0[0 * block_n].qs[i],
-                w0[1 * block_n].qs[i],
-                w0[2 * block_n].qs[i],
-                w0[3 * block_n].qs[i],
-            };
-            iweight_1x12.val[k] = vshlq_n_u32(v0, 16);
-        }
-    } else {
-        for (int k = 0; k < 4; k++) {
-            w0 = &w[(row + 4*k) * block_n + block];
-            v0 = (uint32x4_t){
-                w0[0 * block_n].qs[i],
-                w0[1 * block_n].qs[i],
-                w0[2 * block_n].qs[i],
-                w0[3 * block_n].qs[i],
-            };
-            v1 = (uint32x4_t){
-                w0[0 * block_n].qs[i + 1],
-                w0[1 * block_n].qs[i + 1],
-                w0[2 * block_n].qs[i + 1],
-                w0[3 * block_n].qs[i + 1],
-            };
-            v2 = (uint32x4_t){
-                w0[0 * block_n].qs[i + 2],
-                w0[1 * block_n].qs[i + 2],
-                w0[2 * block_n].qs[i + 2],
-                w0[3 * block_n].qs[i + 2],
-            };
-            iweight_1x12.val[k] = vorrq_u32(vorrq_u32(vshlq_n_u32(v0, 16), vshlq_n_u32(v1, 8)), v2);
-        }
-    }
-    return iweight_1x12;
-}
-
-
-static inline uint8x16_t get_iweight_16x3_shift_0(uint32x4x4_t iweight_1x12) __attribute__((always_inline));
-static inline uint8x16_t get_iweight_16x3_shift_0(uint32x4x4_t iweight_1x12) {
-    const uint32x4_t mask = vdupq_n_u32(0x3F);
-    // shift >> 6, mask 6 bits
-    uint32x4_t s0 = vandq_u32(vshrq_n_u32(iweight_1x12.val[0], 18), mask);
-    uint32x4_t s1 = vandq_u32(vshrq_n_u32(iweight_1x12.val[1], 18), mask);
-    uint32x4_t s2 = vandq_u32(vshrq_n_u32(iweight_1x12.val[2], 18), mask);
-    uint32x4_t s3 = vandq_u32(vshrq_n_u32(iweight_1x12.val[3], 18), mask);
-    // u32 -> u16
-    uint16x4_t u0 = vmovn_u32(s0);
-    uint16x4_t u1 = vmovn_u32(s1);
-    uint16x4_t u2 = vmovn_u32(s2);
-    uint16x4_t u3 = vmovn_u32(s3);
-    // pack
-    uint16x8_t t0 = vcombine_u16(u0, u1);
-    uint16x8_t t1 = vcombine_u16(u2, u3);
-    // u16 -> u8
-    uint8x8_t b0 = vmovn_u16(t0);
-    uint8x8_t b1 = vmovn_u16(t1);
-    return vcombine_u8(b0, b1);
-}
-
-
-static inline uint8x16_t get_iweight_16x3_shift_1(uint32x4x4_t iweight_1x12) __attribute__((always_inline));
-static inline uint8x16_t get_iweight_16x3_shift_1(uint32x4x4_t iweight_1x12) {
-    const uint32x4_t mask = vdupq_n_u32(0x3F);
-    // shift >> 6, mask 6 bits
-    uint32x4_t s0 = vandq_u32(vshrq_n_u32(iweight_1x12.val[0], 12), mask);
-    uint32x4_t s1 = vandq_u32(vshrq_n_u32(iweight_1x12.val[1], 12), mask);
-    uint32x4_t s2 = vandq_u32(vshrq_n_u32(iweight_1x12.val[2], 12), mask);
-    uint32x4_t s3 = vandq_u32(vshrq_n_u32(iweight_1x12.val[3], 12), mask);
-    // u32 -> u16
-    uint16x4_t u0 = vmovn_u32(s0);
-    uint16x4_t u1 = vmovn_u32(s1);
-    uint16x4_t u2 = vmovn_u32(s2);
-    uint16x4_t u3 = vmovn_u32(s3);
-    // pack
-    uint16x8_t t0 = vcombine_u16(u0, u1);
-    uint16x8_t t1 = vcombine_u16(u2, u3);
-    // u16 -> u8
-    uint8x8_t b0 = vmovn_u16(t0);
-    uint8x8_t b1 = vmovn_u16(t1);
-    return vcombine_u8(b0, b1);
-}
-
-
-static inline uint8x16_t get_iweight_16x3_shift_2(uint32x4x4_t iweight_1x12) __attribute__((always_inline));
-static inline uint8x16_t get_iweight_16x3_shift_2(uint32x4x4_t iweight_1x12) {
-    const uint32x4_t mask = vdupq_n_u32(0x3F);
-    // shift >> 6, mask 6 bits
-    uint32x4_t s0 = vandq_u32(vshrq_n_u32(iweight_1x12.val[0], 6), mask);
-    uint32x4_t s1 = vandq_u32(vshrq_n_u32(iweight_1x12.val[1], 6), mask);
-    uint32x4_t s2 = vandq_u32(vshrq_n_u32(iweight_1x12.val[2], 6), mask);
-    uint32x4_t s3 = vandq_u32(vshrq_n_u32(iweight_1x12.val[3], 6), mask);
-    // u32 -> u16
-    uint16x4_t u0 = vmovn_u32(s0);
-    uint16x4_t u1 = vmovn_u32(s1);
-    uint16x4_t u2 = vmovn_u32(s2);
-    uint16x4_t u3 = vmovn_u32(s3);
-    // pack
-    uint16x8_t t0 = vcombine_u16(u0, u1);
-    uint16x8_t t1 = vcombine_u16(u2, u3);
-    // u16 -> u8
-    uint8x8_t b0 = vmovn_u16(t0);
-    uint8x8_t b1 = vmovn_u16(t1);
-    return vcombine_u8(b0, b1);
-}
-
-static inline uint8x16_t get_iweight_16x3_shift_3(uint32x4x4_t iweight_1x12) __attribute__((always_inline));
-static inline uint8x16_t get_iweight_16x3_shift_3(uint32x4x4_t iweight_1x12) {
-    const uint32x4_t mask = vdupq_n_u32(0x3F);
-    // shift >> 6, mask 6 bits
-    uint32x4_t s0 = vandq_u32(iweight_1x12.val[0], mask);
-    uint32x4_t s1 = vandq_u32(iweight_1x12.val[1], mask);
-    uint32x4_t s2 = vandq_u32(iweight_1x12.val[2], mask);
-    uint32x4_t s3 = vandq_u32(iweight_1x12.val[3], mask);
-    // u32 -> u16
-    uint16x4_t u0 = vmovn_u32(s0);
-    uint16x4_t u1 = vmovn_u32(s1);
-    uint16x4_t u2 = vmovn_u32(s2);
-    uint16x4_t u3 = vmovn_u32(s3);
-    // pack
-    uint16x8_t t0 = vcombine_u16(u0, u1);
-    uint16x8_t t1 = vcombine_u16(u2, u3);
-    // u16 -> u8
-    uint8x8_t b0 = vmovn_u16(t0);
-    uint8x8_t b1 = vmovn_u16(t1);
-    return vcombine_u8(b0, b1);
-}
-
-
 void mul_mat_nxm_mx1_with_lut(const block_ifairy *w, int cols, int row_begin, int row_end, const lut_block *lut, float *dst) {
     int block_n = (cols + QK_K - 1) / QK_K;
     for (int row = row_begin; row <= row_end; row+=16) {
@@ -349,21 +214,39 @@ void mul_mat_nxm_mx1_with_lut(const block_ifairy *w, int cols, int row_begin, in
             int16x8x2_t block_dst_real = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
             int16x8x2_t block_dst_imag = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
             for (int i = 0; i < QK_K/4; i+=3) {
-                int max_ii = (i+3 >= QK_K/4) ? 2 : 4;
-                uint32x4x4_t iweight_1x12 = get_iweight_1x12(w, row, block, block_n, i);
-
-                for (int ii = 0; ii < max_ii; ii++) {
-                    
-                    uint8x16_t iweight_16x3 = {};
-                    if (ii == 0) {
-                        iweight_16x3 = get_iweight_16x3_shift_0(iweight_1x12);
-                    } else if (ii == 1) {
-                        iweight_16x3 = get_iweight_16x3_shift_1(iweight_1x12);
-                    } else if (ii == 2) {
-                        iweight_16x3 = get_iweight_16x3_shift_2(iweight_1x12);
-                    } else if (ii == 3) {
-                        iweight_16x3 = get_iweight_16x3_shift_3(iweight_1x12);
+                uint32_t iweight_1x12[16];
+                int max_ii;
+                if (i+3 >= QK_K/4) {
+                    max_ii = 2;
+                    for (int j = 0; j < 16; j++) {
+                        iweight_1x12[j] = (w[(row+j)*block_n+block].qs[i] << 16);
                     }
+                } else {
+                    max_ii = 4;
+                    for (int j = 0; j < 16; j++) {
+                        iweight_1x12[j] = (w[(row+j)*block_n+block].qs[i] << 16) | (w[(row+j)*block_n+block].qs[i+1] << 8) | w[(row+j)*block_n+block].qs[i+2];
+                    }
+                }
+                for (int ii = 0; ii < max_ii; ii++) {
+                    int shift = (3-ii)*6;
+                    uint8x16_t iweight_16x3 = {
+                        iweight_1x12[0] >> shift & 0x3F,
+                        iweight_1x12[1] >> shift & 0x3F,
+                        iweight_1x12[2] >> shift & 0x3F,
+                        iweight_1x12[3] >> shift & 0x3F,
+                        iweight_1x12[4] >> shift & 0x3F,
+                        iweight_1x12[5] >> shift & 0x3F,
+                        iweight_1x12[6] >> shift & 0x3F,
+                        iweight_1x12[7] >> shift & 0x3F,
+                        iweight_1x12[8] >> shift & 0x3F,
+                        iweight_1x12[9] >> shift & 0x3F,
+                        iweight_1x12[10] >> shift & 0x3F,
+                        iweight_1x12[11] >> shift & 0x3F,
+                        iweight_1x12[12] >> shift & 0x3F,
+                        iweight_1x12[13] >> shift & 0x3F,
+                        iweight_1x12[14] >> shift & 0x3F,
+                        iweight_1x12[15] >> shift & 0x3F,
+                    };
                     int8x16x2_t iret_ri = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, lut[block].v[4*i/3+ii]);
                     int8x16_t iret_r = iret_ri.val[0];
                     int8x16_t iret_i = iret_ri.val[1];
