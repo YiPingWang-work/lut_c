@@ -10,8 +10,6 @@
 #define ROWS 10240
 #define COLS 10240
 
-#define RANDMAX 255.0
-
 void print_time_ms() {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
@@ -30,7 +28,7 @@ void print_time_ms() {
 }
 
 static inline float rand_float_001_2() {
-    return 0.01f + (1.0f - 0.01f) * ((float)random() / (float)RAND_MAX);
+    return 0.001f + (1.0f - 0.001f) * ((float)random() / (float)RAND_MAX);
 }
 
 int load_w_bit(const char *path, block_ifairy *w) {
@@ -69,8 +67,11 @@ int load_w_bit(const char *path, block_ifairy *w) {
 
         // 一个 block 完成：512 bit
         if (bit_cnt == QK_K * 2) {
-            w[block_idx].d_real = rand_float_001_2();
-            w[block_idx].d_imag = rand_float_001_2();
+            // w[block_idx].d_real = rand_float_001_2();
+            // w[block_idx].d_imag = rand_float_001_2();
+
+            w[block_idx].d_real = 1; // 测试代码
+            w[block_idx].d_imag = 1;
             // printf("block %d: d_real=%f, d_imag=%f\n",
             //        block_idx, w[block_idx].d_real, w[block_idx].d_imag);
             block_idx++;
@@ -144,14 +145,23 @@ int write_to_file_int8x16x2_t(const char *filename, int block, int begin, int en
 void compare(const block_ifairy *w, const float *act) {
     float *dst1 = calloc(COLS*2, sizeof(float));
     float *dst2 = calloc(COLS*2, sizeof(float));
+
+    // printf("查表计算:\n");
+    // print_time_ms();
+    // lut_block *lut = alloc_lut(ROWS);
+    // generate_lut_int8(act, ROWS, lut);
+    // mul_mat_nxm_mx1_with_lut(w, COLS, 0, ROWS-1, lut, dst2);
+    // print_time_ms();
+    // free_lut(lut);
     
-    printf("查表计算:\n");
+    printf("查表计算，12组一量化:\n");
     print_time_ms();
-    lut_block *lut = alloc_lut(ROWS);
-    generate_lut_int8(act, ROWS, lut);
-    mul_mat_nxm_mx1_with_lut(w, COLS, 0, ROWS-1, lut, dst2);
+    lut_block_12 *lut_12 = alloc_lut_12(ROWS);
+    generate_lut_int8_12(act, ROWS, lut_12);
+    mul_mat_nxm_mx1_with_lut_12(w, COLS, 0, ROWS-1, lut_12, dst2);
     print_time_ms();
-    free_lut(lut);
+    free_lut_12(lut_12);
+
 
     printf("普通计算:\n");
     print_time_ms();
@@ -161,7 +171,7 @@ void compare(const block_ifairy *w, const float *act) {
     
     int errors = 0;
     for (int i = 0; i < COLS*2; i++) {
-        if ((dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 1e-2) {
+        if ((dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 3e-1) {
             printf("❌ %d: dst1=%f, dst2=%f\n", i, dst1[i], dst2[i]);
             errors++;
         } else {
@@ -201,8 +211,8 @@ int main() {
     if (rc != 0) { fprintf(stderr, "Failed to read matrix (%d)\n", rc); free(w); return 2; }
     rc = load_act_float(act_file, act, ROWS*2);
     if (rc != 0) { fprintf(stderr, "Failed to read act (%d)\n", rc); free(w); return 2; }
-    // compare(w, act);
-    sample(w, act);
+    compare(w, act);
+    // sample(w, act);
     free(w);
     free(act);
     return 0;

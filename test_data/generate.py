@@ -7,7 +7,7 @@ def generate_matrix():
     output_file = "./test_data/w.txt"
     with open(output_file, "w") as f:
         for _ in range(rows):
-            row = [f"{0}" for _ in range(cols*2)]
+            row = [f"{random.randint(0, 1)}" for _ in range(cols*2)]
             f.write("".join(row) + "\n")
 
 def generate_act():
@@ -17,12 +17,12 @@ def generate_act():
     imag = 0
     with open(output_file, "w") as f:
         for i in range(row):
-            value = random.uniform(-32, 31)
+            value = random.uniform(-1, 1)
             if i%2 == 0:
                 real += value
             else:
                 imag += value
-            # value = 1;
+            # value = i;
             f.write(f"{value}\n")
     print(f"Final accumulated complex value: {real} + {imag}i")
 
