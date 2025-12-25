@@ -7,7 +7,7 @@
 #include <time.h>
 
 
-#define ROWS 1311
+#define ROWS 1
 #define COLS 2560
 
 static inline long long now_ns(void) {
