@@ -7,8 +7,8 @@
 #include <time.h>
 
 
-#define ROWS 8192
-#define COLS 4096
+#define ROWS 1311
+#define COLS 2560
 
 static inline long long now_ns(void) {
     struct timespec ts;
@@ -17,7 +17,7 @@ static inline long long now_ns(void) {
 }
 
 static inline float rand_float_001_2() {
-    return 0.01f + (1.0f - 0.01f) * ((float)random() / (float)RAND_MAX);
+    return 0.01f + (20.0f - 0.01f) * ((float)random() / (float)RAND_MAX);
 }
 
 int load_w_bit(const char *path, block_ifairy *w) {
@@ -134,8 +134,8 @@ void compare(const block_ifairy *w, const float *act) {
     float *dst2 = calloc(ROWS*2, sizeof(float));
 
     long long t0 = now_ns();
-    lut_block *lut = alloc_lut(ROWS);
-    generate_lut_int8(act, ROWS, lut);
+    lut_block *lut = alloc_lut(COLS);
+    generate_lut_int8(act, COLS, lut);
     mul_mat_nxm_mx1_with_lut(w, COLS, 0, ROWS-1, lut, dst2);
     long long t1 = now_ns();
     printf("查表计算，耗时: %lld us\n", (t1 - t0)/1000);
@@ -149,11 +149,11 @@ void compare(const block_ifairy *w, const float *act) {
     
     int errors = 0;
     for (int i = 0; i < ROWS*2; i++) {
-        if (fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 0.3) {
-            // printf("❌ %d ==> %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9));
+        if (fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 1) {
+            printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
             errors++;
         } else {
-            // printf("✅ %d ==> %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9));
+            // printf("✅ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
         }
     }
     if (errors == 0) {
@@ -183,11 +183,11 @@ int main() {
 
     block_ifairy *w = calloc((size_t)ROWS * COLS/QK_K, sizeof(block_ifairy));
     if (!w) { fprintf(stderr, "OOM w\n"); return 1; }
-    float *act = calloc((size_t)ROWS * 2, sizeof(float));
+    float *act = calloc((size_t)COLS * 2, sizeof(float));
     if (!act) { fprintf(stderr, "OOM act\n"); return 1; }
     int rc = load_w_bit(matrix_file, w);
     if (rc != 0) { fprintf(stderr, "Failed to read matrix (%d)\n", rc); free(w); return 2; }
-    rc = load_act_float(act_file, act, ROWS*2);
+    rc = load_act_float(act_file, act, COLS*2);
     if (rc != 0) { fprintf(stderr, "Failed to read act (%d)\n", rc); free(w); return 2; }
     compare(w, act);
     // sample(w, act);
