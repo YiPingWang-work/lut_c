@@ -2,14 +2,32 @@
 #define MUL_MAT_WITH_LUT
 
 #include <arm_neon.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdint.h>
+#include <math.h>
+
+#define QK_K 256
+// typedef uint16_t ggml_half;
 
 
-static const uint8x16_t uint8x16_t_0_15 = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-static const uint8x16_t uint8x16_t_0_15_swapped = {1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12, 15, 14};
+typedef struct {
+    uint8_t qs[QK_K/4]; // 2 bits per element
+    float d_real, d_imag;
+} block_ifairy;
 
+typedef struct {
+    int8x16x2_t v[(QK_K+2)/3]; // 每3个复数一个lut条目(实部+虚部)，256个复数需要86个条目
+    float d_real, d_imag;
+} lut_block;
 
-int generate_lut_int8(const int16_t *activation, int m, int8x16x2_t *lut);
-void mul_mat_nxm_mx1(void *weight, int n, int m, int8x16x2_t *lut, void *output);
-
+lut_block *alloc_lut(int rows);
+void free_lut(lut_block *lut);
+void generate_lut_int8(const float *act, int rows, lut_block *lut);
+// weight((row_end-row_begin+1)*cols) x act(cols*2，实虚交错) = dst(rows*2，实虚交错)
+void mul_mat_nxm_mx1_with_lut(const block_ifairy *weight, int cols, int row_begin, int row_end, const lut_block *lut, float *dst);
+void mul_mat_nxm_mx1(const block_ifairy *weight, int block_n, int row_begin, int row_end, const float *act, float *dst);
 
 #endif

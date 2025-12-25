@@ -1,0 +1,8 @@
+output/
+main.dSYM/
+.vscode/
+main
+*.prof
+test_data/act.txt
+test_data/lut.txt
+test_data/w.txt
