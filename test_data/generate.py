@@ -20,8 +20,8 @@ def generate_act():
     with open(output_file, "w") as f:
         for i in range(row):
             value = random.randint(-42, 42)
-            # if i % 2 == 0:
-            #     value /= 10
+            if i % 2 == 0:
+                value *= 10
             # if value % 256 == 0:
             #     value = random.choice([-4.2, 4.2])
             # if value % 256 == 1:

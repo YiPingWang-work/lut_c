@@ -225,64 +225,40 @@ static const uint8x16x4_t three_vals2index = {
 };
 
 
-
 static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x4_t ilut) __attribute__((always_inline));
 static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x4_t ilut) {
 
-    // 生成flag
-    uint8x16_t lut_flag = vshrq_n_u8(vandq_u8(iweight_16x3, vdupq_n_u8(0b00110000)), 4); // 11 00 00
     // index 适配
     uint8x16_t index = vqtbl4q_u8(three_vals2index, iweight_16x3);
 
-    // 查询lut
-    int8x16_t ac_00 = vqtbl1q_s8(         ilut.val[0] , index); // ad_10
-    int8x16_t ac_01 = vqtbl1q_s8(vnegq_s8(ilut.val[0]), index); // ad_11
-    int8x16_t ac_10 = vqtbl1q_s8(vnegq_s8(ilut.val[2]), index); // ad_01
-    int8x16_t ac_11 = vqtbl1q_s8(         ilut.val[2] , index); // ad_00
+    //查询lut
+    int8x16_t ac_00 = vqtbl1q_s8(ilut.val[0] , index); // ad_10
+    int8x16_t ac_11 = vqtbl1q_s8(ilut.val[2] , index); // ad_00
+    int8x16_t bd_01 = vqtbl1q_s8(ilut.val[1] , index); // bc_11
+    int8x16_t bd_11 = vqtbl1q_s8(ilut.val[3] , index); // bc_00
 
-    int8x16_t bd_00 = vqtbl1q_s8(vnegq_s8(ilut.val[1]), index); // bc_10
-    int8x16_t bd_01 = vqtbl1q_s8(         ilut.val[1] , index); // bc_11
-    int8x16_t bd_10 = vqtbl1q_s8(vnegq_s8(ilut.val[3]), index); // bc_01
-    int8x16_t bd_11 = vqtbl1q_s8(         ilut.val[3] , index); // bc_00
+    int8x16_t ac_01 = vnegq_s8(ac_00);                 // ad_11
+    int8x16_t ac_10 = vnegq_s8(ac_11);                 // ad_01
+    int8x16_t bd_00 = vnegq_s8(bd_01);                 // bc_10
+    int8x16_t bd_10 = vnegq_s8(bd_11);                 // bc_01
 
-    // 补数据
-    int8x16x4_t result = {{
-        vdupq_n_s8(0),
-        vdupq_n_s8(0),
-        vdupq_n_s8(0),
-        vdupq_n_s8(0)
+    // 拆 2-bit flag
+    uint8x16_t fl0 = vtstq_u8(iweight_16x3, vdupq_n_u8(0b00010000));
+    uint8x16_t fl1 = vtstq_u8(iweight_16x3, vdupq_n_u8(0b00100000));
+
+    int8x16_t ac_l = vbslq_u8(fl0, ac_01, ac_00);
+    int8x16_t ac_h = vbslq_u8(fl0, ac_11, ac_10);
+    int8x16_t ad_l = vbslq_u8(fl0, ac_10, ac_11);
+    int8x16_t bc_l = vbslq_u8(fl0, bd_10, bd_11);
+    int8x16_t bc_h = vbslq_u8(fl0, bd_01, bd_00);
+    int8x16_t bd_h = vbslq_u8(fl0, bd_11, bd_10);
+
+    return (int8x16x4_t){{
+        vbslq_u8(fl1, ac_h, ac_l),
+        vbslq_u8(fl1, ac_l, ad_l),
+        vbslq_u8(fl1, bc_h, bc_l),
+        vbslq_u8(fl1, bd_h, bc_h)
     }};
-
-    uint8x16_t m0 = vceqq_u8(lut_flag, vdupq_n_u8(0b00));
-    uint8x16_t m1 = vceqq_u8(lut_flag, vdupq_n_u8(0b01));
-    uint8x16_t m2 = vceqq_u8(lut_flag, vdupq_n_u8(0b10));
-    uint8x16_t m3 = vceqq_u8(lut_flag, vdupq_n_u8(0b11));
-
-    // val[0] : ac
-    result.val[0] = vbslq_u8(m0, ac_00, result.val[0]);
-    result.val[0] = vbslq_u8(m1, ac_01, result.val[0]);
-    result.val[0] = vbslq_u8(m2, ac_10, result.val[0]);
-    result.val[0] = vbslq_u8(m3, ac_11, result.val[0]);
-
-    // val[1] : ad
-    result.val[1] = vbslq_u8(m0, ac_11, result.val[1]);
-    result.val[1] = vbslq_u8(m1, ac_10, result.val[1]);
-    result.val[1] = vbslq_u8(m2, ac_00, result.val[1]);
-    result.val[1] = vbslq_u8(m3, ac_01, result.val[1]);
-
-    // val[2] : bc
-    result.val[2] = vbslq_u8(m0, bd_11, result.val[2]);
-    result.val[2] = vbslq_u8(m1, bd_10, result.val[2]);
-    result.val[2] = vbslq_u8(m2, bd_00, result.val[2]);
-    result.val[2] = vbslq_u8(m3, bd_01, result.val[2]);
-
-    // val[3] : bd
-    result.val[3] = vbslq_u8(m0, bd_00, result.val[3]);
-    result.val[3] = vbslq_u8(m1, bd_01, result.val[3]);
-    result.val[3] = vbslq_u8(m2, bd_10, result.val[3]);
-    result.val[3] = vbslq_u8(m3, bd_11, result.val[3]);
-
-    return result;
 }
 
 
