@@ -19,9 +19,13 @@ def generate_act():
     output_file = "./test_data/act.txt"
     with open(output_file, "w") as f:
         for i in range(row):
-            value = random.choice([4.0, -4.0]) + random.uniform(-0.01, 0.01)
-            if i % 2 == 0:
-                value = random.choice([1, -1]) * 4000 + random.uniform(-10, 10)
+            value = random.randint(-42, 42)
+            # if i % 2 == 0:
+            #     value /= 10
+            # if value % 256 == 0:
+            #     value = random.choice([-4.2, 4.2])
+            # if value % 256 == 1:
+            #     value = random.choice([-42, 42])
             f.write(f"{value}\n")
 
 if __name__ == '__main__':

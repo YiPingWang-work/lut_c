@@ -235,25 +235,15 @@ static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x
     uint8x16_t index = vqtbl4q_u8(three_vals2index, iweight_16x3);
 
     // 查询lut
-    int8x16_t ac_00 = vqtbl1q_s8(         ilut.val[0] , index);
-    int8x16_t ac_01 = vqtbl1q_s8(vnegq_s8(ilut.val[0]), index);
-    int8x16_t ac_10 = vqtbl1q_s8(vnegq_s8(ilut.val[2]), index);
-    int8x16_t ac_11 = vqtbl1q_s8(         ilut.val[2] , index);
+    int8x16_t ac_00 = vqtbl1q_s8(         ilut.val[0] , index); // ad_10
+    int8x16_t ac_01 = vqtbl1q_s8(vnegq_s8(ilut.val[0]), index); // ad_11
+    int8x16_t ac_10 = vqtbl1q_s8(vnegq_s8(ilut.val[2]), index); // ad_01
+    int8x16_t ac_11 = vqtbl1q_s8(         ilut.val[2] , index); // ad_00
 
-    int8x16_t bd_00 = vqtbl1q_s8(vnegq_s8(ilut.val[1]), index);
-    int8x16_t bd_01 = vqtbl1q_s8(         ilut.val[1] , index);
-    int8x16_t bd_10 = vqtbl1q_s8(vnegq_s8(ilut.val[3]), index);
-    int8x16_t bd_11 = vqtbl1q_s8(         ilut.val[3] , index);
-
-    int8x16_t ad_00 = vqtbl1q_s8(         ilut.val[2] , index);
-    int8x16_t ad_01 = vqtbl1q_s8(vnegq_s8(ilut.val[2]), index);
-    int8x16_t ad_10 = vqtbl1q_s8(         ilut.val[0] , index);
-    int8x16_t ad_11 = vqtbl1q_s8(vnegq_s8(ilut.val[0]), index);
-
-    int8x16_t bc_00 = vqtbl1q_s8(         ilut.val[3] , index);
-    int8x16_t bc_01 = vqtbl1q_s8(vnegq_s8(ilut.val[3]), index);
-    int8x16_t bc_10 = vqtbl1q_s8(vnegq_s8(ilut.val[1]), index);
-    int8x16_t bc_11 = vqtbl1q_s8(         ilut.val[1] , index);
+    int8x16_t bd_00 = vqtbl1q_s8(vnegq_s8(ilut.val[1]), index); // bc_10
+    int8x16_t bd_01 = vqtbl1q_s8(         ilut.val[1] , index); // bc_11
+    int8x16_t bd_10 = vqtbl1q_s8(vnegq_s8(ilut.val[3]), index); // bc_01
+    int8x16_t bd_11 = vqtbl1q_s8(         ilut.val[3] , index); // bc_00
 
     // 补数据
     int8x16x4_t result = {{
@@ -275,16 +265,16 @@ static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x
     result.val[0] = vbslq_u8(m3, ac_11, result.val[0]);
 
     // val[1] : ad
-    result.val[1] = vbslq_u8(m0, ad_00, result.val[1]);
-    result.val[1] = vbslq_u8(m1, ad_01, result.val[1]);
-    result.val[1] = vbslq_u8(m2, ad_10, result.val[1]);
-    result.val[1] = vbslq_u8(m3, ad_11, result.val[1]);
+    result.val[1] = vbslq_u8(m0, ac_11, result.val[1]);
+    result.val[1] = vbslq_u8(m1, ac_10, result.val[1]);
+    result.val[1] = vbslq_u8(m2, ac_00, result.val[1]);
+    result.val[1] = vbslq_u8(m3, ac_01, result.val[1]);
 
     // val[2] : bc
-    result.val[2] = vbslq_u8(m0, bc_00, result.val[2]);
-    result.val[2] = vbslq_u8(m1, bc_01, result.val[2]);
-    result.val[2] = vbslq_u8(m2, bc_10, result.val[2]);
-    result.val[2] = vbslq_u8(m3, bc_11, result.val[2]);
+    result.val[2] = vbslq_u8(m0, bd_11, result.val[2]);
+    result.val[2] = vbslq_u8(m1, bd_10, result.val[2]);
+    result.val[2] = vbslq_u8(m2, bd_00, result.val[2]);
+    result.val[2] = vbslq_u8(m3, bd_01, result.val[2]);
 
     // val[3] : bd
     result.val[3] = vbslq_u8(m0, bd_00, result.val[3]);
@@ -308,50 +298,53 @@ void mul_mat_nxm_mx1_with_lut(const block_ifairy *w, int cols, int row_begin, in
 
             for (int i = 0; i < QK_K/4; i+=3) {
                 uint32_t iweight_1x12[16];
-                int max_ii;
+                #define MUL_MAT_16X3_3X1_WITH_LUT(ii) do { \
+                    int shift = (3-ii)*6; \
+                    uint8x16_t iweight_16x3 = { \
+                        (iweight_1x12[0]  >> shift) & 0x3F, \
+                        (iweight_1x12[1]  >> shift) & 0x3F, \
+                        (iweight_1x12[2]  >> shift) & 0x3F, \
+                        (iweight_1x12[3]  >> shift) & 0x3F, \
+                        (iweight_1x12[4]  >> shift) & 0x3F, \
+                        (iweight_1x12[5]  >> shift) & 0x3F, \
+                        (iweight_1x12[6]  >> shift) & 0x3F, \
+                        (iweight_1x12[7]  >> shift) & 0x3F, \
+                        (iweight_1x12[8]  >> shift) & 0x3F, \
+                        (iweight_1x12[9]  >> shift) & 0x3F, \
+                        (iweight_1x12[10] >> shift) & 0x3F, \
+                        (iweight_1x12[11] >> shift) & 0x3F, \
+                        (iweight_1x12[12] >> shift) & 0x3F, \
+                        (iweight_1x12[13] >> shift) & 0x3F, \
+                        (iweight_1x12[14] >> shift) & 0x3F, \
+                        (iweight_1x12[15] >> shift) & 0x3F, \
+                    }; \
+\
+                    int8x16x4_t iret = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, lut[block].v[4*i/3+ii]); \
+\
+                    block_dst_00.val[0] = vaddw_s8(block_dst_00.val[0],  vget_low_s8(iret.val[0])); \
+                    block_dst_00.val[1] = vaddw_s8(block_dst_00.val[1], vget_high_s8(iret.val[0])); \
+                    block_dst_01.val[0] = vaddw_s8(block_dst_01.val[0],  vget_low_s8(iret.val[1])); \
+                    block_dst_01.val[1] = vaddw_s8(block_dst_01.val[1], vget_high_s8(iret.val[1])); \
+                    block_dst_10.val[0] = vaddw_s8(block_dst_10.val[0],  vget_low_s8(iret.val[2])); \
+                    block_dst_10.val[1] = vaddw_s8(block_dst_10.val[1], vget_high_s8(iret.val[2])); \
+                    block_dst_11.val[0] = vaddw_s8(block_dst_11.val[0],  vget_low_s8(iret.val[3])); \
+                    block_dst_11.val[1] = vaddw_s8(block_dst_11.val[1], vget_high_s8(iret.val[3])); \
+                } while(0)
+
                 if (i+3 >= QK_K/4) {
-                    max_ii = 2;
                     for (int j = 0; j < 16 && row+j <= row_end; j++) {
                         iweight_1x12[j] = (w[(row+j)*block_n+block].qs[i] << 16);
                     }
+                    MUL_MAT_16X3_3X1_WITH_LUT(0);
+                    MUL_MAT_16X3_3X1_WITH_LUT(1);
                 } else {
-                    max_ii = 4;
                     for (int j = 0; j < 16 && row+j <= row_end; j++) {
                         iweight_1x12[j] = (w[(row+j)*block_n+block].qs[i] << 16) | (w[(row+j)*block_n+block].qs[i+1] << 8) | w[(row+j)*block_n+block].qs[i+2];
                     }
-                }
-                for (int ii = 0; ii < max_ii; ii++) {
-                    int shift = (3-ii)*6;
-                    uint8x16_t iweight_16x3 = {
-                        (iweight_1x12[0]  >> shift) & 0x3F,
-                        (iweight_1x12[1]  >> shift) & 0x3F,
-                        (iweight_1x12[2]  >> shift) & 0x3F,
-                        (iweight_1x12[3]  >> shift) & 0x3F,
-                        (iweight_1x12[4]  >> shift) & 0x3F,
-                        (iweight_1x12[5]  >> shift) & 0x3F,
-                        (iweight_1x12[6]  >> shift) & 0x3F,
-                        (iweight_1x12[7]  >> shift) & 0x3F,
-                        (iweight_1x12[8]  >> shift) & 0x3F,
-                        (iweight_1x12[9]  >> shift) & 0x3F,
-                        (iweight_1x12[10] >> shift) & 0x3F,
-                        (iweight_1x12[11] >> shift) & 0x3F,
-                        (iweight_1x12[12] >> shift) & 0x3F,
-                        (iweight_1x12[13] >> shift) & 0x3F,
-                        (iweight_1x12[14] >> shift) & 0x3F,
-                        (iweight_1x12[15] >> shift) & 0x3F,
-                    };
-
-                    int8x16x4_t iret = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, lut[block].v[4*i/3+ii]);
-
-                    block_dst_00.val[0] = vaddw_s8(block_dst_00.val[0],  vget_low_s8(iret.val[0]));
-                    block_dst_00.val[1] = vaddw_s8(block_dst_00.val[1], vget_high_s8(iret.val[0]));
-                    block_dst_01.val[0] = vaddw_s8(block_dst_01.val[0],  vget_low_s8(iret.val[1]));
-                    block_dst_01.val[1] = vaddw_s8(block_dst_01.val[1], vget_high_s8(iret.val[1]));
-                    block_dst_10.val[0] = vaddw_s8(block_dst_10.val[0],  vget_low_s8(iret.val[2]));
-                    block_dst_10.val[1] = vaddw_s8(block_dst_10.val[1], vget_high_s8(iret.val[2]));
-                    block_dst_11.val[0] = vaddw_s8(block_dst_11.val[0],  vget_low_s8(iret.val[3]));
-                    block_dst_11.val[1] = vaddw_s8(block_dst_11.val[1], vget_high_s8(iret.val[3]));
-
+                    MUL_MAT_16X3_3X1_WITH_LUT(0);
+                    MUL_MAT_16X3_3X1_WITH_LUT(1);
+                    MUL_MAT_16X3_3X1_WITH_LUT(2);
+                    MUL_MAT_16X3_3X1_WITH_LUT(3);
                 }
             }
 

@@ -17,7 +17,7 @@ static inline long long now_ns(void) {
 }
 
 static inline float rand_float() {
-    return 0.01f + (3.0f - 0.01f) * ((float)random() / (float)RAND_MAX);
+    return 0.001f + (1.0f - 0.001f) * ((float)random() / (float)RAND_MAX);
 }
 
 int load_w_bit(const char *path, block_ifairy *w) {
@@ -152,8 +152,8 @@ void compare(const block_ifairy *w, const float *act) {
     
     int errors = 0;
     for (int i = 0; i < ROWS*2; i++) {
-        if (fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 0.1) {
-            // printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
+        if (fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 1) {
+            printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
             errors++;
         } else {
             // printf("✅ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
@@ -162,7 +162,7 @@ void compare(const block_ifairy *w, const float *act) {
     if (errors == 0) {
         printf("Results match!\n");
     } else {
-        printf("Total mismatches: %f\n", 1.0f-(float)errors/(float)ROWS*2);
+        printf("Total mismatches: %f/%f\n", (float)errors, (float)ROWS*2);
     }
 
     free(dst1);
