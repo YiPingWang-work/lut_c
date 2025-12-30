@@ -29,190 +29,283 @@ void generate_lut_int8(const float *act, int rows, lut_block *lut) { // rows个�
         lut[block].d_imag = scale_imag;
         float inv_scale_real = 1.0f / scale_real;
         float inv_scale_imag = 1.0f / scale_imag;
-
+        // printf("block %d: act[%d~%d], scale_real=%f, scale_imag=%f\n", block, act_begin, act_end, scale_real, scale_imag);
+        
         // 生成lut表
         for (int i = act_begin; i <= act_end; i += 6) {
             int8_t r0, r1, r2, i0, i1, i2;
             if (i+6 > act_end) {
-                r0 = (int8_t)roundf(act[i]   * inv_scale_real);
+                r0 = (int8_t)roundf(act[i]    * inv_scale_real);
                 i0 = (int8_t)roundf(-act[i+1] * inv_scale_imag);
                 r1 = 0;
                 i1 = 0;
                 r2 = 0;
                 i2 = 0;
             } else {
-                r0 = (int8_t)roundf(act[i]   * inv_scale_real);
+                r0 = (int8_t)roundf(act[i]    * inv_scale_real);
                 i0 = (int8_t)roundf(-act[i+1] * inv_scale_imag);
-                r1 = (int8_t)roundf(act[i+2] * inv_scale_real);
+                r1 = (int8_t)roundf(act[i+2]  * inv_scale_real);
                 i1 = (int8_t)roundf(-act[i+3] * inv_scale_imag);
-                r2 = (int8_t)roundf(act[i+4] * inv_scale_real);
+                r2 = (int8_t)roundf(act[i+4]  * inv_scale_real);
                 i2 = (int8_t)roundf(-act[i+5] * inv_scale_imag);
             }
-            int8x16_t real, imag;
-            real[0]  = -r0 - r1 - r2;   imag[0]  = -i0 - i1 - i2;    // (-1, -1, -1)
-            real[1]  = -r0 - r1 + r2;   imag[1]  = -i0 - i1 + i2;    // (-1, -1,  1)
-            real[2]  = -r0 - r1 + i2;   imag[2]  = -i0 - i1 - r2;    // (-1, -1, -i)
-            real[3]  = -r0 - r1 - i2;   imag[3]  = -i0 - i1 + r2;    // (-1, -1,  i)
 
-            real[4]  = -r0 + r1 - r2;   imag[4]  = -i0 + i1 - i2;    // (-1,  1, -1)
-            real[5]  = -r0 + r1 + r2;   imag[5]  = -i0 + i1 + i2;    // (-1,  1,  1)
-            real[6]  = -r0 + r1 + i2;   imag[6]  = -i0 + i1 - r2;    // (-1,  1, -i)
-            real[7]  = -r0 + r1 - i2;   imag[7]  = -i0 + i1 + r2;    // (-1,  1,  i)
+            int8x16_t ac = {
+                -r0 - r1 - r2,
+                -r0 - r1 + r2,
+                -r0 - r1 + 0,
+                -r0 - r1 + 0,
 
-            real[8]  = -r0 + i1 - r2;   imag[8]  = -i0 - r1 - i2;    // (-1, -i, -1)
-            real[9]  = -r0 + i1 + r2;   imag[9]  = -i0 - r1 + i2;    // (-1, -i,  1)
-            real[10] = -r0 + i1 + i2;   imag[10] = -i0 - r1 - r2;    // (-1, -i, -i)
-            real[11] = -r0 + i1 - i2;   imag[11] = -i0 - r1 + r2;    // (-1, -i,  i)
+                -r0 + r1 - r2,
+                -r0 + r1 + r2,
+                -r0 + r1 + 0,
+                -r0 + r1 + 0,
 
-            real[12] = -r0 - i1 - r2;   imag[12] = -i0 + r1 - i2;    // (-1,  i, -1)
-            real[13] = -r0 - i1 + r2;   imag[13] = -i0 + r1 + i2;    // (-1,  i,  1)
-            real[14] = -r0 - i1 + i2;   imag[14] = -i0 + r1 - r2;    // (-1,  i, -i)
-            real[15] = -r0 - i1 - i2;   imag[15] = -i0 + r1 + r2;    // (-1,  i,  i)
+                -r0 + 0  - r2,
+                -r0 + 0  + r2,
+                -r0 + 0  + 0,
+                -r0 + 0  + 0,
 
-            lut[block].v[(i - act_begin)/6] = (int8x16x2_t){.val = {real, imag}};
+                -r0 + 0  - r2,
+                -r0 + 0  + r2,
+                -r0 + 0  + 0,
+                -r0 + 0  + 0,
+            };
+
+            int8x16_t bd = {
+                0 + 0 + 0,
+                0 + 0 + 0,
+                0 + 0 - i2,
+                0 + 0 + i2,
+
+                0 + 0 + 0,
+                0 + 0 + 0,
+                0 + 0 - i2,
+                0 + 0 + i2,
+
+                0 - i1 + 0,
+                0 - i1 + 0,
+                0 - i1 - i2,
+                0 - i1 + i2,
+
+                0 + i1 + 0,
+                0 + i1 + 0,
+                0 + i1 - i2,
+                0 + i1 + i2,
+            };
+
+            int8x16_t ad = {
+                0 + 0 + 0,
+                0 + 0 + 0,
+                0 + 0 - r2,
+                0 + 0 + r2,
+
+                0 + 0 + 0,
+                0 + 0 + 0,
+                0 + 0 - r2,
+                0 + 0 + r2,
+
+                0 - r1 + 0,
+                0 - r1 + 0,
+                0 - r1 - r2,
+                0 - r1 + r2,
+
+                0 + r1 + 0,
+                0 + r1 + 0,
+                0 + r1 - r2,
+                0 + r1 + r2,
+            };
+            
+            int8x16_t bc = {
+                -i0 - i1 - i2,
+                -i0 - i1 + i2,
+                -i0 - i1 + 0,
+                -i0 - i1 + 0,
+
+                -i0 + i1 - i2,
+                -i0 + i1 + i2,
+                -i0 + i1 + 0,
+                -i0 + i1 + 0,
+
+                -i0 + 0  - i2,
+                -i0 + 0  + i2,
+                -i0 + 0  + 0,
+                -i0 + 0  + 0,
+
+                -i0 + 0  - i2,
+                -i0 + 0  + i2,
+                -i0 + 0  + 0,
+                -i0 + 0  + 0,
+            };
+
+            lut[block].v[(i - act_begin)/6] = (int8x16x4_t){.val = ac, bd, ad, bc};
         }
 
     }
 }
 
 
-const uint8_t three_vals2index[64] = {
-    // -1 * *
-    0b000000, // (-1, -1, -1)
-    0b000001, // (-1, -1,  1)
-    0b000010, // (-1, -1, -i)
-    0b000011, // (-1, -1,  i)
-    0b000100, // (-1,  1, -1)
-    0b000101, // (-1,  1,  1)
-    0b000110, // (-1,  1, -i)
-    0b000111, // (-1,  1,  i)
-    0b001000, // (-1, -i, -1)
-    0b001001, // (-1, -i,  1)
-    0b001010, // (-1, -i, -i)
-    0b001011, // (-1, -i,  i)
-    0b001100, // (-1,  i, -1)
-    0b001101, // (-1,  i,  1)
-    0b001110, // (-1,  i, -i)
-    0b001111, // (-1,  i,  i)
-    // 1 * *
-    0b000101, // ( 1, -1, -1)
-    0b000100, // ( 1, -1,  1)
-    0b000111, // ( 1, -1, -i)
-    0b000110, // ( 1, -1,  i)
-    0b000001, // ( 1,  1, -1)
-    0b000000, // ( 1,  1,  1)
-    0b000011, // ( 1,  1, -i)
-    0b000010, // ( 1,  1,  i)
-    0b001101, // ( 1, -i, -1)
-    0b001100, // ( 1, -i,  1)
-    0b001111, // ( 1, -i, -i)
-    0b001110, // ( 1, -i,  i)
-    0b001001, // ( 1,  i, -1)
-    0b001000, // ( 1,  i,  1)
-    0b001011, // ( 1,  i, -i)
-    0b001010, // ( 1,  i,  i)
-    // -i * *
-    0b001111, // (-i, -1, -1)
-    0b001110, // (-i, -1,  1)
-    0b001100, // (-i, -1, -i)
-    0b001101, // (-i, -1,  i)
-    0b001011, // (-i,  1, -1)
-    0b001010, // (-i,  1,  1)
-    0b001000, // (-i,  1, -i)
-    0b001001, // (-i,  1,  i)
-    0b000011, // (-i, -i, -1)
-    0b000010, // (-i, -i,  1)
-    0b000000, // (-i, -i, -i)
-    0b000001, // (-i, -i,  i)
-    0b000111, // (-i,  i, -1)
-    0b000110, // (-i,  i,  1)
-    0b000100, // (-i,  i, -i)
-    0b000101, // (-i,  i,  i)
-    // i * *
-    0b001010, // ( i, -1, -1)
-    0b001011, // ( i, -1,  1)
-    0b001001, // ( i, -1, -i)
-    0b001000, // ( i, -1,  i)
-    0b001110, // ( i,  1, -1)
-    0b001111, // ( i,  1,  1)
-    0b001101, // ( i,  1, -i)
-    0b001100, // ( i,  1,  i)
-    0b000110, // ( i, -i, -1)
-    0b000111, // ( i, -i,  1)
-    0b000101, // ( i, -i, -i)
-    0b000100, // ( i, -i,  i)
-    0b000010, // ( i,  i, -1)
-    0b000011, // ( i,  i,  1)
-    0b000001, // ( i,  i, -i)
-    0b000000, // ( i,  i,  i)
+static const uint8x16x4_t three_vals2index = {
+    (uint8x16_t){
+        // -1 * *
+        0b000000, // (-1, -1, -1)
+        0b000001, // (-1, -1,  1)
+        0b000010, // (-1, -1, -i)
+        0b000011, // (-1, -1,  i)
+        0b000100, // (-1,  1, -1)
+        0b000101, // (-1,  1,  1)
+        0b000110, // (-1,  1, -i)
+        0b000111, // (-1,  1,  i)
+        0b001000, // (-1, -i, -1)
+        0b001001, // (-1, -i,  1)
+        0b001010, // (-1, -i, -i)
+        0b001011, // (-1, -i,  i)
+        0b001100, // (-1,  i, -1)
+        0b001101, // (-1,  i,  1)
+        0b001110, // (-1,  i, -i)
+        0b001111, // (-1,  i,  i)
+    },
+    (uint8x16_t){
+        // 1 * *
+        0b000101, // ( 1, -1, -1)
+        0b000100, // ( 1, -1,  1)
+        0b000111, // ( 1, -1, -i)
+        0b000110, // ( 1, -1,  i)
+        0b000001, // ( 1,  1, -1)
+        0b000000, // ( 1,  1,  1)
+        0b000011, // ( 1,  1, -i)
+        0b000010, // ( 1,  1,  i)
+        0b001101, // ( 1, -i, -1)
+        0b001100, // ( 1, -i,  1)
+        0b001111, // ( 1, -i, -i)
+        0b001110, // ( 1, -i,  i)
+        0b001001, // ( 1,  i, -1)
+        0b001000, // ( 1,  i,  1)
+        0b001011, // ( 1,  i, -i)
+        0b001010, // ( 1,  i,  i)
+    },
+    (uint8x16_t){
+        // -i * *
+        0b001111, // (-i, -1, -1)
+        0b001110, // (-i, -1,  1)
+        0b001100, // (-i, -1, -i)
+        0b001101, // (-i, -1,  i)
+        0b001011, // (-i,  1, -1)
+        0b001010, // (-i,  1,  1)
+        0b001000, // (-i,  1, -i)
+        0b001001, // (-i,  1,  i)
+        0b000011, // (-i, -i, -1)
+        0b000010, // (-i, -i,  1)
+        0b000000, // (-i, -i, -i)
+        0b000001, // (-i, -i,  i)
+        0b000111, // (-i,  i, -1)
+        0b000110, // (-i,  i,  1)
+        0b000100, // (-i,  i, -i)
+        0b000101, // (-i,  i,  i)
+    },
+    (uint8x16_t){
+        // i * *
+        0b001010, // ( i, -1, -1)
+        0b001011, // ( i, -1,  1)
+        0b001001, // ( i, -1, -i)
+        0b001000, // ( i, -1,  i)
+        0b001110, // ( i,  1, -1)
+        0b001111, // ( i,  1,  1)
+        0b001101, // ( i,  1, -i)
+        0b001100, // ( i,  1,  i)
+        0b000110, // ( i, -i, -1)
+        0b000111, // ( i, -i,  1)
+        0b000101, // ( i, -i, -i)
+        0b000100, // ( i, -i,  i)
+        0b000010, // ( i,  i, -1)
+        0b000011, // ( i,  i,  1)
+        0b000001, // ( i,  i, -i)
+        0b000000, // ( i,  i,  i)
+    }
 };
 
 
 
-
-static inline int8x16x2_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x2_t ilut) __attribute__((always_inline));
-static inline int8x16x2_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x2_t ilut) {
-    int8x16x2_t ilut_exp[4] = {
-        {.val = {ilut.val[0], ilut.val[1]}},
-        {.val = {vnegq_s8(ilut.val[0]), vnegq_s8(ilut.val[1])}}, // act * -1
-        {.val = {vnegq_s8(ilut.val[1]), ilut.val[0]}}, // act * i
-        {.val = {ilut.val[1], vnegq_s8(ilut.val[0])}}, // act * -i
-    };
+static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x4_t ilut) __attribute__((always_inline));
+static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x4_t ilut) {
 
     // 生成flag
     uint8x16_t lut_flag = vshrq_n_u8(vandq_u8(iweight_16x3, vdupq_n_u8(0b00110000)), 4); // 11 00 00
     // index 适配
-    uint8x16_t index = {
-        three_vals2index[iweight_16x3[0]],
-        three_vals2index[iweight_16x3[1]],
-        three_vals2index[iweight_16x3[2]],
-        three_vals2index[iweight_16x3[3]],
-        three_vals2index[iweight_16x3[4]],
-        three_vals2index[iweight_16x3[5]],
-        three_vals2index[iweight_16x3[6]],
-        three_vals2index[iweight_16x3[7]],
-        three_vals2index[iweight_16x3[8]],
-        three_vals2index[iweight_16x3[9]],
-        three_vals2index[iweight_16x3[10]],
-        three_vals2index[iweight_16x3[11]],
-        three_vals2index[iweight_16x3[12]],
-        three_vals2index[iweight_16x3[13]],
-        three_vals2index[iweight_16x3[14]],
-        three_vals2index[iweight_16x3[15]],
-    };
+    uint8x16_t index = vqtbl4q_u8(three_vals2index, iweight_16x3);
 
     // 查询lut
-    int8x16_t real_exp_00 = vqtbl1q_s8(ilut_exp[0].val[0], index);
-    int8x16_t real_exp_01 = vqtbl1q_s8(ilut_exp[1].val[0], index);
-    int8x16_t real_exp_10 = vqtbl1q_s8(ilut_exp[2].val[0], index);
-    int8x16_t real_exp_11 = vqtbl1q_s8(ilut_exp[3].val[0], index);
-    int8x16_t imag_exp_00 = vqtbl1q_s8(ilut_exp[0].val[1], index);
-    int8x16_t imag_exp_01 = vqtbl1q_s8(ilut_exp[1].val[1], index);
-    int8x16_t imag_exp_10 = vqtbl1q_s8(ilut_exp[2].val[1], index);
-    int8x16_t imag_exp_11 = vqtbl1q_s8(ilut_exp[3].val[1], index);
+    int8x16_t ac_00 = vqtbl1q_s8(         ilut.val[0] , index);
+    int8x16_t ac_01 = vqtbl1q_s8(vnegq_s8(ilut.val[0]), index);
+    int8x16_t ac_10 = vqtbl1q_s8(vnegq_s8(ilut.val[2]), index);
+    int8x16_t ac_11 = vqtbl1q_s8(         ilut.val[2] , index);
+
+    int8x16_t bd_00 = vqtbl1q_s8(vnegq_s8(ilut.val[1]), index);
+    int8x16_t bd_01 = vqtbl1q_s8(         ilut.val[1] , index);
+    int8x16_t bd_10 = vqtbl1q_s8(vnegq_s8(ilut.val[3]), index);
+    int8x16_t bd_11 = vqtbl1q_s8(         ilut.val[3] , index);
+
+    int8x16_t ad_00 = vqtbl1q_s8(         ilut.val[2] , index);
+    int8x16_t ad_01 = vqtbl1q_s8(vnegq_s8(ilut.val[2]), index);
+    int8x16_t ad_10 = vqtbl1q_s8(         ilut.val[0] , index);
+    int8x16_t ad_11 = vqtbl1q_s8(vnegq_s8(ilut.val[0]), index);
+
+    int8x16_t bc_00 = vqtbl1q_s8(         ilut.val[3] , index);
+    int8x16_t bc_01 = vqtbl1q_s8(vnegq_s8(ilut.val[3]), index);
+    int8x16_t bc_10 = vqtbl1q_s8(vnegq_s8(ilut.val[1]), index);
+    int8x16_t bc_11 = vqtbl1q_s8(         ilut.val[1] , index);
 
     // 补数据
-    int8x16_t real = vdupq_n_s8(0);
-    int8x16_t imag = vdupq_n_s8(0);
-    real = vbslq_u8(vceqq_u8(lut_flag, vdupq_n_u8(0b00)), real_exp_00, real);
-    real = vbslq_u8(vceqq_u8(lut_flag, vdupq_n_u8(0b01)), real_exp_01, real);
-    real = vbslq_u8(vceqq_u8(lut_flag, vdupq_n_u8(0b10)), real_exp_10, real);
-    real = vbslq_u8(vceqq_u8(lut_flag, vdupq_n_u8(0b11)), real_exp_11, real);
-    imag = vbslq_u8(vceqq_u8(lut_flag, vdupq_n_u8(0b00)), imag_exp_00, imag);
-    imag = vbslq_u8(vceqq_u8(lut_flag, vdupq_n_u8(0b01)), imag_exp_01, imag);
-    imag = vbslq_u8(vceqq_u8(lut_flag, vdupq_n_u8(0b10)), imag_exp_10, imag);
-    imag = vbslq_u8(vceqq_u8(lut_flag, vdupq_n_u8(0b11)), imag_exp_11, imag);
+    int8x16x4_t result = {{
+        vdupq_n_s8(0),
+        vdupq_n_s8(0),
+        vdupq_n_s8(0),
+        vdupq_n_s8(0)
+    }};
 
-    return (int8x16x2_t){.val = {real, imag}};
+    uint8x16_t m0 = vceqq_u8(lut_flag, vdupq_n_u8(0b00));
+    uint8x16_t m1 = vceqq_u8(lut_flag, vdupq_n_u8(0b01));
+    uint8x16_t m2 = vceqq_u8(lut_flag, vdupq_n_u8(0b10));
+    uint8x16_t m3 = vceqq_u8(lut_flag, vdupq_n_u8(0b11));
+
+    // val[0] : ac
+    result.val[0] = vbslq_u8(m0, ac_00, result.val[0]);
+    result.val[0] = vbslq_u8(m1, ac_01, result.val[0]);
+    result.val[0] = vbslq_u8(m2, ac_10, result.val[0]);
+    result.val[0] = vbslq_u8(m3, ac_11, result.val[0]);
+
+    // val[1] : ad
+    result.val[1] = vbslq_u8(m0, ad_00, result.val[1]);
+    result.val[1] = vbslq_u8(m1, ad_01, result.val[1]);
+    result.val[1] = vbslq_u8(m2, ad_10, result.val[1]);
+    result.val[1] = vbslq_u8(m3, ad_11, result.val[1]);
+
+    // val[2] : bc
+    result.val[2] = vbslq_u8(m0, bc_00, result.val[2]);
+    result.val[2] = vbslq_u8(m1, bc_01, result.val[2]);
+    result.val[2] = vbslq_u8(m2, bc_10, result.val[2]);
+    result.val[2] = vbslq_u8(m3, bc_11, result.val[2]);
+
+    // val[3] : bd
+    result.val[3] = vbslq_u8(m0, bd_00, result.val[3]);
+    result.val[3] = vbslq_u8(m1, bd_01, result.val[3]);
+    result.val[3] = vbslq_u8(m2, bd_10, result.val[3]);
+    result.val[3] = vbslq_u8(m3, bd_11, result.val[3]);
+
+    return result;
 }
 
 
 void mul_mat_nxm_mx1_with_lut(const block_ifairy *w, int cols, int row_begin, int row_end, const lut_block *lut, float *dst) {
-    int block_n = (cols + QK_K - 1) / QK_K;
+    const int block_n = (cols + QK_K - 1) / QK_K;
     for (int row = row_begin; row <= row_end; row+=16) {
         for (int block = 0; block < block_n; block++) {
-            int16x8x2_t block_dst_real = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
-            int16x8x2_t block_dst_imag = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
+
+            int16x8x2_t block_dst_00 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
+            int16x8x2_t block_dst_01 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
+            int16x8x2_t block_dst_10 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
+            int16x8x2_t block_dst_11 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
+
             for (int i = 0; i < QK_K/4; i+=3) {
                 uint32_t iweight_1x12[16];
                 int max_ii;
@@ -230,36 +323,47 @@ void mul_mat_nxm_mx1_with_lut(const block_ifairy *w, int cols, int row_begin, in
                 for (int ii = 0; ii < max_ii; ii++) {
                     int shift = (3-ii)*6;
                     uint8x16_t iweight_16x3 = {
-                        iweight_1x12[0] >> shift & 0x3F,
-                        iweight_1x12[1] >> shift & 0x3F,
-                        iweight_1x12[2] >> shift & 0x3F,
-                        iweight_1x12[3] >> shift & 0x3F,
-                        iweight_1x12[4] >> shift & 0x3F,
-                        iweight_1x12[5] >> shift & 0x3F,
-                        iweight_1x12[6] >> shift & 0x3F,
-                        iweight_1x12[7] >> shift & 0x3F,
-                        iweight_1x12[8] >> shift & 0x3F,
-                        iweight_1x12[9] >> shift & 0x3F,
-                        iweight_1x12[10] >> shift & 0x3F,
-                        iweight_1x12[11] >> shift & 0x3F,
-                        iweight_1x12[12] >> shift & 0x3F,
-                        iweight_1x12[13] >> shift & 0x3F,
-                        iweight_1x12[14] >> shift & 0x3F,
-                        iweight_1x12[15] >> shift & 0x3F,
+                        (iweight_1x12[0]  >> shift) & 0x3F,
+                        (iweight_1x12[1]  >> shift) & 0x3F,
+                        (iweight_1x12[2]  >> shift) & 0x3F,
+                        (iweight_1x12[3]  >> shift) & 0x3F,
+                        (iweight_1x12[4]  >> shift) & 0x3F,
+                        (iweight_1x12[5]  >> shift) & 0x3F,
+                        (iweight_1x12[6]  >> shift) & 0x3F,
+                        (iweight_1x12[7]  >> shift) & 0x3F,
+                        (iweight_1x12[8]  >> shift) & 0x3F,
+                        (iweight_1x12[9]  >> shift) & 0x3F,
+                        (iweight_1x12[10] >> shift) & 0x3F,
+                        (iweight_1x12[11] >> shift) & 0x3F,
+                        (iweight_1x12[12] >> shift) & 0x3F,
+                        (iweight_1x12[13] >> shift) & 0x3F,
+                        (iweight_1x12[14] >> shift) & 0x3F,
+                        (iweight_1x12[15] >> shift) & 0x3F,
                     };
-                    int8x16x2_t iret_ri = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, lut[block].v[4*i/3+ii]);
-                    int8x16_t iret_r = iret_ri.val[0];
-                    int8x16_t iret_i = iret_ri.val[1];
-                    block_dst_real.val[0] = vaddw_s8(block_dst_real.val[0], vget_low_s8(iret_r));
-                    block_dst_real.val[1] = vaddw_s8(block_dst_real.val[1], vget_high_s8(iret_r));
-                    block_dst_imag.val[0] = vaddw_s8(block_dst_imag.val[0], vget_low_s8(iret_i));
-                    block_dst_imag.val[1] = vaddw_s8(block_dst_imag.val[1], vget_high_s8(iret_i));
+
+                    int8x16x4_t iret = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, lut[block].v[4*i/3+ii]);
+
+                    block_dst_00.val[0] = vaddw_s8(block_dst_00.val[0],  vget_low_s8(iret.val[0]));
+                    block_dst_00.val[1] = vaddw_s8(block_dst_00.val[1], vget_high_s8(iret.val[0]));
+                    block_dst_01.val[0] = vaddw_s8(block_dst_01.val[0],  vget_low_s8(iret.val[1]));
+                    block_dst_01.val[1] = vaddw_s8(block_dst_01.val[1], vget_high_s8(iret.val[1]));
+                    block_dst_10.val[0] = vaddw_s8(block_dst_10.val[0],  vget_low_s8(iret.val[2]));
+                    block_dst_10.val[1] = vaddw_s8(block_dst_10.val[1], vget_high_s8(iret.val[2]));
+                    block_dst_11.val[0] = vaddw_s8(block_dst_11.val[0],  vget_low_s8(iret.val[3]));
+                    block_dst_11.val[1] = vaddw_s8(block_dst_11.val[1], vget_high_s8(iret.val[3]));
+
                 }
             }
+
             // 反量化，写回
-            for (int j = 0; j < 16 && row+j <= row_end; j++) {
-                dst[(row+j)*2  ] += (float)(j < 8 ? block_dst_real.val[0][j] : block_dst_real.val[1][j-8]) * lut[block].d_real * w[(row+j)*block_n+block].d_real;
-                dst[(row+j)*2+1] += (float)(j < 8 ? block_dst_imag.val[0][j] : block_dst_imag.val[1][j-8]) * lut[block].d_imag * w[(row+j)*block_n+block].d_imag;
+            for (int j = 0; j < 8 && row+j <= row_end; j++) {
+                dst[(row+j)*2  ] += (float)(block_dst_00.val[0][j]) * lut[block].d_real * w[(row+j)*block_n+block].d_real + (float)(block_dst_11.val[0][j]) * lut[block].d_imag * w[(row+j)*block_n+block].d_imag;
+                dst[(row+j)*2+1] += (float)(block_dst_01.val[0][j]) * lut[block].d_real * w[(row+j)*block_n+block].d_imag + (float)(block_dst_10.val[0][j]) * lut[block].d_imag * w[(row+j)*block_n+block].d_real;
+            }
+
+            for (int j = 8; j < 16 && row+j <= row_end; j++) {
+                dst[(row+j)*2  ] += (float)(block_dst_00.val[1][j-8]) * lut[block].d_real * w[(row+j)*block_n+block].d_real + (float)(block_dst_11.val[1][j-8]) * lut[block].d_imag * w[(row+j)*block_n+block].d_imag;
+                dst[(row+j)*2+1] += (float)(block_dst_01.val[1][j-8]) * lut[block].d_real * w[(row+j)*block_n+block].d_imag + (float)(block_dst_10.val[1][j-8]) * lut[block].d_imag * w[(row+j)*block_n+block].d_real;
             }
         }
     }
@@ -279,8 +383,8 @@ void free_lut(lut_block *lut) {
 
 
 // ================================ 验证乘法程序 ================================
-static inline float32x2_t mul_mat_block_1x4_4x1(uint8_t a, float32_t *b) __attribute__((always_inline));
-static inline float32x2_t mul_mat_block_1x4_4x1(uint8_t a, float32_t *b) {
+static inline float32x2_t mul_mat_block_1x4_4x1(uint8_t a, float32_t *b, float32_t d_real, float32_t d_imag) __attribute__((always_inline));
+static inline float32x2_t mul_mat_block_1x4_4x1(uint8_t a, float32_t *b, float32_t d_real, float32_t d_imag) {
     float32_t acc_r = 0;
     float32_t acc_i = 0;
 
@@ -292,20 +396,20 @@ static inline float32x2_t mul_mat_block_1x4_4x1(uint8_t a, float32_t *b) {
 
         switch (code) {
         case 0b00:  // -1
-            acc_r += -xr;
-            acc_i += -xi;
+            acc_r += -xr * d_real;
+            acc_i += -xi * d_real;
             break;
         case 0b01:  // +1
-            acc_r += xr;
-            acc_i += xi;
+            acc_r += xr * d_real;
+            acc_i += xi * d_real;
             break;
         case 0b10:  // -i
-            acc_r += xi;
-            acc_i += -xr;
+            acc_r += xi * d_imag;
+            acc_i += -xr * d_imag;
             break;
         case 0b11:  // +i
-            acc_r += -xi;
-            acc_i += xr;
+            acc_r += -xi * d_imag;
+            acc_i += xr * d_imag;
             break;
         }
     }
@@ -329,10 +433,17 @@ void mul_mat_nxm_mx1(const block_ifairy *w, int cols, int row_begin, int row_end
                     act[block*QK_K*2+i*8+6],
                     act[block*QK_K*2+i*8+7],
                 };
-                float32x2_t ret = mul_mat_block_1x4_4x1(w4, a4);
-                dst[2*row]   += (float)ret[0] * w[row*block_n+block].d_real;
-                dst[2*row+1] += (float)ret[1] * w[row*block_n+block].d_imag;
+                float32x2_t ret = mul_mat_block_1x4_4x1(w4, a4, w[row*block_n+block].d_real, w[row*block_n+block].d_imag);
+                dst[2*row]   += (float)ret[0];
+                dst[2*row+1] += (float)ret[1];
             }
         }
     }
+}
+
+
+
+// ================================ 验证乘法程序（使用dot） ================================
+void mul_mat_nxm_mx1_vecdot(const block_ifairy *w, int cols, int row_begin, int row_end, const int8_t *act, float *dst) { // 使用simd并行乘法计算
+    
 }

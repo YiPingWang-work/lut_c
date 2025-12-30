@@ -7,8 +7,8 @@
 #include <time.h>
 
 
-#define ROWS 1
-#define COLS 2560
+#define ROWS 1024
+#define COLS 1024
 
 static inline long long now_ns(void) {
     struct timespec ts;
@@ -16,8 +16,8 @@ static inline long long now_ns(void) {
     return (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
 }
 
-static inline float rand_float_001_2() {
-    return 0.01f + (20.0f - 0.01f) * ((float)random() / (float)RAND_MAX);
+static inline float rand_float() {
+    return 0.01f + (3.0f - 0.01f) * ((float)random() / (float)RAND_MAX);
 }
 
 int load_w_bit(const char *path, block_ifairy *w) {
@@ -53,10 +53,10 @@ int load_w_bit(const char *path, block_ifairy *w) {
             elem_bits = 0;
             elem_idx++;
         }
-        // w[block_idx].d_real = rand_float_001_2();
-        // w[block_idx].d_imag = rand_float_001_2();
-        w[block_idx].d_real = 1.0f;
-        w[block_idx].d_imag = 1.0f;
+        w[block_idx].d_real = rand_float();
+        w[block_idx].d_imag = rand_float();
+        w[block_idx].d_real = 7.0f;
+        w[block_idx].d_imag = 2.0f;
         // 一个 block 完成：512 bit
         if (bit_cnt == QK_K * 2) {
             // printf("block %d: d_real=%f, d_imag=%f\n",
@@ -132,7 +132,10 @@ int write_to_file_int8x16x2_t(const char *filename, int block, int begin, int en
 void compare(const block_ifairy *w, const float *act) {
     float *dst1 = calloc(ROWS*2, sizeof(float));
     float *dst2 = calloc(ROWS*2, sizeof(float));
-
+    for(int i = 0; i < ROWS*2; i++) {
+        dst1[i] = 0.0f;
+        dst2[i] = 0.0f;
+    }
     long long t0 = now_ns();
     lut_block *lut = alloc_lut(COLS);
     generate_lut_int8(act, COLS, lut);
@@ -149,8 +152,8 @@ void compare(const block_ifairy *w, const float *act) {
     
     int errors = 0;
     for (int i = 0; i < ROWS*2; i++) {
-        if (fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 1) {
-            printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
+        if (fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 0.1) {
+            // printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
             errors++;
         } else {
             // printf("✅ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
@@ -159,7 +162,7 @@ void compare(const block_ifairy *w, const float *act) {
     if (errors == 0) {
         printf("Results match!\n");
     } else {
-        printf("Total mismatches: %d/%d\n", errors, ROWS*2);
+        printf("Total mismatches: %f\n", 1.0f-(float)errors/(float)ROWS*2);
     }
 
     free(dst1);

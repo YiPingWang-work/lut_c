@@ -19,7 +19,7 @@ typedef struct {
 } block_ifairy;
 
 typedef struct {
-    int8x16x2_t v[(QK_K+2)/3]; // 每3个复数一个lut条目(实部+虚部)，256个复数需要86个条目
+    int8x16x4_t v[(QK_K+2)/3]; // 每3个复数一个lut条目(ac bd bc ad)，256个复数需要86个条目
     float d_real, d_imag;
 } lut_block;
 
