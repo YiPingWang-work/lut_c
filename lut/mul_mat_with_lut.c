@@ -232,10 +232,10 @@ static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x
     uint8x16_t index = vqtbl4q_u8(three_vals2index, iweight_16x3);
 
     //查询lut
-    int8x16_t ac_00 = vqtbl1q_s8(ilut.val[0] , index); // ad_10
-    int8x16_t ac_11 = vqtbl1q_s8(ilut.val[2] , index); // ad_00
-    int8x16_t bd_01 = vqtbl1q_s8(ilut.val[1] , index); // bc_11
-    int8x16_t bd_11 = vqtbl1q_s8(ilut.val[3] , index); // bc_00
+    int8x16_t ac_00 = vqtbl1q_s8(ilut.val[0], index); // ad_10
+    int8x16_t ac_11 = vqtbl1q_s8(ilut.val[2], index); // ad_00
+    int8x16_t bd_01 = vqtbl1q_s8(ilut.val[1], index); // bc_11
+    int8x16_t bd_11 = vqtbl1q_s8(ilut.val[3], index); // bc_00
 
     int8x16_t ac_01 = vnegq_s8(ac_00);                 // ad_11
     int8x16_t ac_10 = vnegq_s8(ac_11);                 // ad_01
@@ -277,23 +277,24 @@ void mul_mat_nxm_mx1_with_lut(const block_ifairy *w, int cols, int row_begin, in
                 #define MUL_MAT_16X3_3X1_WITH_LUT(ii) do { \
                     int shift = (3-ii)*6; \
                     uint8x16_t iweight_16x3 = { \
-                        (iweight_1x12[0]  >> shift) & 0x3F, \
-                        (iweight_1x12[1]  >> shift) & 0x3F, \
-                        (iweight_1x12[2]  >> shift) & 0x3F, \
-                        (iweight_1x12[3]  >> shift) & 0x3F, \
-                        (iweight_1x12[4]  >> shift) & 0x3F, \
-                        (iweight_1x12[5]  >> shift) & 0x3F, \
-                        (iweight_1x12[6]  >> shift) & 0x3F, \
-                        (iweight_1x12[7]  >> shift) & 0x3F, \
-                        (iweight_1x12[8]  >> shift) & 0x3F, \
-                        (iweight_1x12[9]  >> shift) & 0x3F, \
-                        (iweight_1x12[10] >> shift) & 0x3F, \
-                        (iweight_1x12[11] >> shift) & 0x3F, \
-                        (iweight_1x12[12] >> shift) & 0x3F, \
-                        (iweight_1x12[13] >> shift) & 0x3F, \
-                        (iweight_1x12[14] >> shift) & 0x3F, \
-                        (iweight_1x12[15] >> shift) & 0x3F, \
+                        (iweight_1x12[0]  >> shift), \
+                        (iweight_1x12[1]  >> shift), \
+                        (iweight_1x12[2]  >> shift), \
+                        (iweight_1x12[3]  >> shift), \
+                        (iweight_1x12[4]  >> shift), \
+                        (iweight_1x12[5]  >> shift), \
+                        (iweight_1x12[6]  >> shift), \
+                        (iweight_1x12[7]  >> shift), \
+                        (iweight_1x12[8]  >> shift), \
+                        (iweight_1x12[9]  >> shift), \
+                        (iweight_1x12[10] >> shift), \
+                        (iweight_1x12[11] >> shift), \
+                        (iweight_1x12[12] >> shift), \
+                        (iweight_1x12[13] >> shift), \
+                        (iweight_1x12[14] >> shift), \
+                        (iweight_1x12[15] >> shift), \
                     }; \
+                    iweight_16x3 = vandq_u8(iweight_16x3, vdupq_n_u8(0b00111111)); \
 \
                     int8x16x4_t iret = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, lut[block].v[4*i/3+ii]); \
 \
@@ -309,13 +310,16 @@ void mul_mat_nxm_mx1_with_lut(const block_ifairy *w, int cols, int row_begin, in
 
                 if (i+3 >= QK_K/4) {
                     for (int j = 0; j < 16 && row+j <= row_end; j++) {
-                        iweight_1x12[j] = (w[(row+j)*block_n+block].qs[i] << 16);
+                        const uint8_t *p = &w[(row+j)*block_n + block].qs[i];
+                        iweight_1x12[j] = (uint32_t)p[0] << 16;
                     }
                     MUL_MAT_16X3_3X1_WITH_LUT(0);
                     MUL_MAT_16X3_3X1_WITH_LUT(1);
                 } else {
                     for (int j = 0; j < 16 && row+j <= row_end; j++) {
-                        iweight_1x12[j] = (w[(row+j)*block_n+block].qs[i] << 16) | (w[(row+j)*block_n+block].qs[i+1] << 8) | w[(row+j)*block_n+block].qs[i+2];
+                        const uint8_t *p = &w[(row+j)*block_n + block].qs[i];
+                        uint32_t v = *(const uint32_t *)p;
+                        iweight_1x12[j] = __builtin_bswap32(v) >> 8;
                     }
                     MUL_MAT_16X3_3X1_WITH_LUT(0);
                     MUL_MAT_16X3_3X1_WITH_LUT(1);
