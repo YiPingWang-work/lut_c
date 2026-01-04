@@ -7,7 +7,7 @@
 #include <time.h>
 
 
-#define ROWS 1021
+#define ROWS 1024
 #define COLS 1024
 
 static inline long long now_ns(void) {
@@ -136,16 +136,19 @@ void compare(const block_ifairy *w, const float *act) {
         dst1[i] = 0.0f;
         dst2[i] = 0.0f;
     }
-    long long t0 = now_ns();
     lut_block *lut = alloc_lut(COLS);
-    generate_lut_int8(act, COLS, lut);
-    mul_mat_nxm_mx1_with_lut(w, COLS, 0, ROWS-1, lut, dst2);
+    block_ifairy_1x3 *w2 = alloc_new_w(ROWS, COLS);
+    transpose(ROWS, COLS, w, w2);
+    long long t0 = now_ns();
+    generate_lut_int8(COLS, act, lut);
+    mul_mat_nxm_mx1_with_lut(COLS, 0, ROWS-1, w2, lut, dst2);
     long long t1 = now_ns();
     printf("查表计算，耗时: %lld us\n", (t1 - t0)/1000);
     free_lut(lut);
+    free_new_w(w2);
 
     t0 = now_ns();
-    mul_mat_nxm_mx1(w, COLS, 0, ROWS-1, act, dst1);
+    mul_mat_nxm_mx1(COLS, 0, ROWS-1, w, act, dst1);
     t1 = now_ns();
     printf("直接计算，耗时: %lld us\n", (t1 - t0)/1000);
 
@@ -153,7 +156,7 @@ void compare(const block_ifairy *w, const float *act) {
     int errors = 0;
     for (int i = 0; i < ROWS*2; i++) {
         if (fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 0.1) {
-            // printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
+            printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
             errors++;
         } else {
             // printf("✅ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
@@ -172,10 +175,13 @@ void compare(const block_ifairy *w, const float *act) {
 void sample(const block_ifairy *w, const float *act) {
     float *dst2 = calloc(COLS*2, sizeof(float));
     lut_block *lut = alloc_lut(ROWS);
+    block_ifairy_1x3 *w2 = alloc_new_w(ROWS, COLS);
+    transpose(ROWS, COLS, w, w2);
     while(1) {
-        generate_lut_int8(act, ROWS, lut);
-        mul_mat_nxm_mx1_with_lut(w, COLS, 0, ROWS-1, lut, dst2);
+        generate_lut_int8(ROWS, act, lut);
+        mul_mat_nxm_mx1_with_lut(COLS, 0, ROWS-1, w2, lut, dst2);
     }
+    free_new_w(w2);
     free_lut(lut);
     free(dst2);
 }
