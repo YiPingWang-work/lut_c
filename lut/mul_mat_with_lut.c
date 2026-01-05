@@ -3,13 +3,6 @@
 //
 #include "mul_mat_with_lut.h"
 
-static inline int8_t set_int8(int16_t v) __attribute__((always_inline));
-static inline int8_t set_int8(int16_t v) {
-    if (v > 127) return 127;
-    if (v < -128) return -128;
-    return (int8_t)v;
-}
-
 
 void generate_lut_int8(int m, const float *act, lut_block *lut) { // rows个复数
     int blk_n = (m+QK_K-1)/QK_K;
@@ -344,28 +337,31 @@ void transpose(int n, int m, const block_ifairy *raw_w, block_ifairy_1x3 *w) { /
     for (int j = 0; j < n; j++) {
         for (int blk = 0; blk < blk_n; blk++) {
             int ii = 0;
+            #pragma unroll
             for (int i = 0; i < QK_K/4; i+=3) {
-                const uint32_t *p = (uint32_t *)&raw_w[j*blk_n + blk].qs[i];
+                const uint32_t *p = (uint32_t *)&(raw_w[j*blk_n + blk].qs[i]);
                 uint8_t iweight_1x3_0, iweight_1x3_1, iweight_1x3_2, iweight_1x3_3;
                 if (i+3 >= QK_K/4) {
                     uint32_t iweight_1x12 = p[0] << 16;
                     iweight_1x3_0 = iweight_1x12 >> 18 & 0b00111111; 
                     iweight_1x3_1 = iweight_1x12 >> 12 & 0b00111111;
+                    w[(j/16)*blk_n + blk].qs[ii  ][j%16] = three_vals2index_uint8[iweight_1x3_0] | (iweight_1x3_0 << 2 & 0b11000000);
+                    w[(j/16)*blk_n + blk].qs[ii+1][j%16] = three_vals2index_uint8[iweight_1x3_1] | (iweight_1x3_1 << 2 & 0b11000000);
                 } else {
                     uint32_t iweight_1x12 = __builtin_bswap32(*p) >> 8;
                     iweight_1x3_0 = iweight_1x12 >> 18 & 0b00111111; 
                     iweight_1x3_1 = iweight_1x12 >> 12 & 0b00111111;
                     iweight_1x3_2 = iweight_1x12 >> 6  & 0b00111111; 
                     iweight_1x3_3 = iweight_1x12       & 0b00111111;
+                    w[(j/16)*blk_n + blk].qs[ii  ][j%16] = three_vals2index_uint8[iweight_1x3_0] | (iweight_1x3_0 << 2 & 0b11000000);
+                    w[(j/16)*blk_n + blk].qs[ii+1][j%16] = three_vals2index_uint8[iweight_1x3_1] | (iweight_1x3_1 << 2 & 0b11000000);
+                    w[(j/16)*blk_n + blk].qs[ii+2][j%16] = three_vals2index_uint8[iweight_1x3_2] | (iweight_1x3_2 << 2 & 0b11000000);
+                    w[(j/16)*blk_n + blk].qs[ii+3][j%16] = three_vals2index_uint8[iweight_1x3_3] | (iweight_1x3_3 << 2 & 0b11000000);
                 }
-                w[j*blk_n + blk].qs[ii  ] = three_vals2index_uint8[iweight_1x3_0] | (iweight_1x3_0 << 2 & 0b11000000);
-                w[j*blk_n + blk].qs[ii+1] = three_vals2index_uint8[iweight_1x3_1] | (iweight_1x3_1 << 2 & 0b11000000);
-                w[j*blk_n + blk].qs[ii+2] = three_vals2index_uint8[iweight_1x3_2] | (iweight_1x3_2 << 2 & 0b11000000);
-                w[j*blk_n + blk].qs[ii+3] = three_vals2index_uint8[iweight_1x3_3] | (iweight_1x3_3 << 2 & 0b11000000);
                 ii += 4;
             }
-            w[j*blk_n + blk].d_real = raw_w[j*blk_n + blk].d_real;
-            w[j*blk_n + blk].d_imag = raw_w[j*blk_n + blk].d_imag;
+            w[(j/16)*blk_n + blk].d_real[j%16] = raw_w[j*blk_n + blk].d_real;
+            w[(j/16)*blk_n + blk].d_imag[j%16] = raw_w[j*blk_n + blk].d_imag;
         }
     }
 }
@@ -381,14 +377,12 @@ void mul_mat_nxm_mx1_with_lut(int m, int row_begin, int row_end, const block_ifa
             int16x8x2_t block_dst_01 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
             int16x8x2_t block_dst_10 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
             int16x8x2_t block_dst_11 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
-
+            
+            #pragma unroll
             for (int i = 0; i < in_blk_n; i++) {
-
-                uint8x16_t iweight_16x3;
-                for (int j = 0; j < 16; j++) {
-                    iweight_16x3[j] = w[(row+j)*blk_n+blk].qs[i];
-                }
+                uint8x16_t iweight_16x3 = vld1q_u8(w[(row/16)*blk_n+blk].qs[i]);
                 int8x16x4_t iret = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, lut[blk].v[i]);
+
                 block_dst_00.val[0] = vaddw_s8(block_dst_00.val[0],  vget_low_s8(iret.val[0]));
                 block_dst_00.val[1] = vaddw_s8(block_dst_00.val[1], vget_high_s8(iret.val[0]));
                 block_dst_01.val[0] = vaddw_s8(block_dst_01.val[0],  vget_low_s8(iret.val[1]));
@@ -397,18 +391,17 @@ void mul_mat_nxm_mx1_with_lut(int m, int row_begin, int row_end, const block_ifa
                 block_dst_10.val[1] = vaddw_s8(block_dst_10.val[1], vget_high_s8(iret.val[2]));
                 block_dst_11.val[0] = vaddw_s8(block_dst_11.val[0],  vget_low_s8(iret.val[3]));
                 block_dst_11.val[1] = vaddw_s8(block_dst_11.val[1], vget_high_s8(iret.val[3]));
-
             }
 
             // 反量化，写回
             for (int j = 0; j < 8 && row+j <= row_end; j++) {
-                dst[(row+j)*2  ] += (float)(block_dst_00.val[0][j]) * lut[blk].d_real * w[(row+j)*blk_n+blk].d_real + (float)(block_dst_11.val[0][j]) * lut[blk].d_imag * w[(row+j)*blk_n+blk].d_imag;
-                dst[(row+j)*2+1] += (float)(block_dst_01.val[0][j]) * lut[blk].d_real * w[(row+j)*blk_n+blk].d_imag + (float)(block_dst_10.val[0][j]) * lut[blk].d_imag * w[(row+j)*blk_n+blk].d_real;
+                dst[(row+j)*2  ] += (float)(block_dst_00.val[0][j]) * lut[blk].d_real * w[(row/16)*blk_n+blk].d_real[j] + (float)(block_dst_11.val[0][j]) * lut[blk].d_imag * w[(row/16)*blk_n+blk].d_imag[j];
+                dst[(row+j)*2+1] += (float)(block_dst_01.val[0][j]) * lut[blk].d_real * w[(row/16)*blk_n+blk].d_imag[j] + (float)(block_dst_10.val[0][j]) * lut[blk].d_imag * w[(row/16)*blk_n+blk].d_real[j];
             }
 
             for (int j = 8; j < 16 && row+j <= row_end; j++) {
-                dst[(row+j)*2  ] += (float)(block_dst_00.val[1][j-8]) * lut[blk].d_real * w[(row+j)*blk_n+blk].d_real + (float)(block_dst_11.val[1][j-8]) * lut[blk].d_imag * w[(row+j)*blk_n+blk].d_imag;
-                dst[(row+j)*2+1] += (float)(block_dst_01.val[1][j-8]) * lut[blk].d_real * w[(row+j)*blk_n+blk].d_imag + (float)(block_dst_10.val[1][j-8]) * lut[blk].d_imag * w[(row+j)*blk_n+blk].d_real;
+                dst[(row+j)*2  ] += (float)(block_dst_00.val[1][j-8]) * lut[blk].d_real * w[(row/16)*blk_n+blk].d_real[j] + (float)(block_dst_11.val[1][j-8]) * lut[blk].d_imag * w[(row/16)*blk_n+blk].d_imag[j];
+                dst[(row+j)*2+1] += (float)(block_dst_01.val[1][j-8]) * lut[blk].d_real * w[(row/16)*blk_n+blk].d_imag[j] + (float)(block_dst_10.val[1][j-8]) * lut[blk].d_imag * w[(row/16)*blk_n+blk].d_real[j];
             }
         }
     }
@@ -427,7 +420,20 @@ void free_lut(lut_block *lut) {
 
 block_ifairy_1x3 *alloc_new_w(int n, int m) {
     int blk_n = (m+QK_K-1)/QK_K;
-    return calloc(blk_n*n, sizeof(block_ifairy_1x3));
+    int row_n = (n+15)/16;
+    block_ifairy_1x3 *ptr = calloc(blk_n*row_n, sizeof(block_ifairy_1x3));
+    for (int i = 0; i < blk_n*row_n; i++) {
+        for (int j = 0; j < (QK_K+2)/3; j++) {
+            for (int k = 0; k < 16; k++) {
+                ptr[i].qs[j][k] = 0;
+            }
+        }
+        for (int k = 0; k < 16; k++) {
+            ptr[i].d_real[k] = 0.0f;
+            ptr[i].d_imag[k] = 0.0f;
+        }
+    }
+    return ptr;
 }
 
 void free_new_w(block_ifairy_1x3 *w) {

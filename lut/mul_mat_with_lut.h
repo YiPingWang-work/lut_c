@@ -26,6 +26,12 @@ typedef struct {
 typedef struct {
     uint8_t qs[(QK_K+2)/3]; // 8 bits 3 elements
     float d_real, d_imag;
+} block_ifairy_1x3_;
+
+typedef struct {
+    uint8_t qs[(QK_K+2)/3][16]; // 8 bits 3 elements, 16 rows
+    float d_real[16];
+    float d_imag[16];
 } block_ifairy_1x3;
 
 lut_block *alloc_lut(int rows);

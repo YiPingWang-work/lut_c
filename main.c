@@ -7,8 +7,8 @@
 #include <time.h>
 
 
-#define ROWS 1024
-#define COLS 1024
+#define ROWS 4096
+#define COLS 4096
 
 static inline long long now_ns(void) {
     struct timespec ts;
@@ -55,8 +55,8 @@ int load_w_bit(const char *path, block_ifairy *w) {
         }
         w[block_idx].d_real = rand_float();
         w[block_idx].d_imag = rand_float();
-        w[block_idx].d_real = 7.0f;
-        w[block_idx].d_imag = 2.0f;
+        // w[block_idx].d_real = 2.0f;
+        // w[block_idx].d_imag = 7.0f;
         // 一个 block 完成：512 bit
         if (bit_cnt == QK_K * 2) {
             // printf("block %d: d_real=%f, d_imag=%f\n",

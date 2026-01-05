@@ -2,8 +2,8 @@ import os
 import random
 
 def generate_matrix():
-    rows = 1024
-    cols = 1024
+    rows = 10240
+    cols = 10240
     output_file = "./test_data/w.txt"
     with open(output_file, "w") as f:
         for _ in range(rows):
@@ -15,7 +15,7 @@ def generate_matrix():
             f.write("".join(row) + "\n")
 
 def generate_act():
-    row = 2048
+    row = 20480
     output_file = "./test_data/act.txt"
     with open(output_file, "w") as f:
         for i in range(row):
