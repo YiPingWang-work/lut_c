@@ -4,10 +4,10 @@
 #include "mul_mat_with_lut.h"
 
 
-void generate_lut_int8(int m, const float *act, lut_block *lut) { // rows个复数
-    int blk_n = (m+QK_K-1)/QK_K;
+void generate_lut_int8(int k, const float *act, lut_block *lut) { // k个复数
+    int blk_n = (k+QK_K-1)/QK_K;
     for (int blk = 0; blk < blk_n; blk++) {
-        int act_begin = blk * QK_K * 2, act_end = ((blk+1)*QK_K-1)*2 < m*2 ? (blk+1)*QK_K*2-1 : m*2;
+        int act_begin = blk * QK_K * 2, act_end = ((blk+1)*QK_K-1)*2 < k*2 ? (blk+1)*QK_K*2-1 : k*2;
         float max_real = 0.0f, max_imag = 0.0f;
         // 计算缩放因子
         for (int i = act_begin; i <= act_end; i += 2) {
@@ -213,86 +213,6 @@ static const uint8_t three_vals2index_uint8[64] = {
 };
 
 
-static const uint8x16x4_t three_vals2index = {
-    (uint8x16_t){
-        // -1 * *
-        0b000000, // (-1, -1, -1)
-        0b000001, // (-1, -1,  1)
-        0b000010, // (-1, -1, -i)
-        0b000011, // (-1, -1,  i)
-        0b000100, // (-1,  1, -1)
-        0b000101, // (-1,  1,  1)
-        0b000110, // (-1,  1, -i)
-        0b000111, // (-1,  1,  i)
-        0b001000, // (-1, -i, -1)
-        0b001001, // (-1, -i,  1)
-        0b001010, // (-1, -i, -i)
-        0b001011, // (-1, -i,  i)
-        0b001100, // (-1,  i, -1)
-        0b001101, // (-1,  i,  1)
-        0b001110, // (-1,  i, -i)
-        0b001111, // (-1,  i,  i)
-    },
-    (uint8x16_t){
-        // 1 * *
-        0b000101, // ( 1, -1, -1)
-        0b000100, // ( 1, -1,  1)
-        0b000111, // ( 1, -1, -i)
-        0b000110, // ( 1, -1,  i)
-        0b000001, // ( 1,  1, -1)
-        0b000000, // ( 1,  1,  1)
-        0b000011, // ( 1,  1, -i)
-        0b000010, // ( 1,  1,  i)
-        0b001101, // ( 1, -i, -1)
-        0b001100, // ( 1, -i,  1)
-        0b001111, // ( 1, -i, -i)
-        0b001110, // ( 1, -i,  i)
-        0b001001, // ( 1,  i, -1)
-        0b001000, // ( 1,  i,  1)
-        0b001011, // ( 1,  i, -i)
-        0b001010, // ( 1,  i,  i)
-    },
-    (uint8x16_t){
-        // -i * *
-        0b001111, // (-i, -1, -1)
-        0b001110, // (-i, -1,  1)
-        0b001100, // (-i, -1, -i)
-        0b001101, // (-i, -1,  i)
-        0b001011, // (-i,  1, -1)
-        0b001010, // (-i,  1,  1)
-        0b001000, // (-i,  1, -i)
-        0b001001, // (-i,  1,  i)
-        0b000011, // (-i, -i, -1)
-        0b000010, // (-i, -i,  1)
-        0b000000, // (-i, -i, -i)
-        0b000001, // (-i, -i,  i)
-        0b000111, // (-i,  i, -1)
-        0b000110, // (-i,  i,  1)
-        0b000100, // (-i,  i, -i)
-        0b000101, // (-i,  i,  i)
-    },
-    (uint8x16_t){
-        // i * *
-        0b001010, // ( i, -1, -1)
-        0b001011, // ( i, -1,  1)
-        0b001001, // ( i, -1, -i)
-        0b001000, // ( i, -1,  i)
-        0b001110, // ( i,  1, -1)
-        0b001111, // ( i,  1,  1)
-        0b001101, // ( i,  1, -i)
-        0b001100, // ( i,  1,  i)
-        0b000110, // ( i, -i, -1)
-        0b000111, // ( i, -i,  1)
-        0b000101, // ( i, -i, -i)
-        0b000100, // ( i, -i,  i)
-        0b000010, // ( i,  i, -1)
-        0b000011, // ( i,  i,  1)
-        0b000001, // ( i,  i, -i)
-        0b000000, // ( i,  i,  i)
-    }
-};
-
-
 static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x4_t ilut) __attribute__((always_inline));
 static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x4_t ilut) {
 
@@ -331,10 +251,10 @@ static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x
 }
 
 
-void transpose(int n, int m, const block_ifairy *raw_w, block_ifairy_1x3 *w) { // n行m列的raw_w矩阵
-    const int blk_n = (m+QK_K-1)/QK_K;
+void transpose(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3 *w) { // m行k列的raw_w矩阵
+    const int blk_n = (k+QK_K-1)/QK_K;
     const int in_blk_n = (QK_K+2)/3;
-    for (int j = 0; j < n; j++) {
+    for (int j = 0; j < m; j++) {
         for (int blk = 0; blk < blk_n; blk++) {
             int ii = 0;
             #pragma unroll
@@ -367,8 +287,8 @@ void transpose(int n, int m, const block_ifairy *raw_w, block_ifairy_1x3 *w) { /
 }
 
 
-void mul_mat_nxm_mx1_with_lut(int m, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst) {
-    const int blk_n = (m+QK_K-1)/QK_K;
+void mul_mat_nxm_mx1_with_lut(int k, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst) {
+    const int blk_n = (k+QK_K-1)/QK_K;
     const int in_blk_n = (QK_K+2)/3;
     for (int row = row_begin; row <= row_end; row+=16) {
         for (int blk = 0; blk < blk_n; blk++) {
@@ -408,8 +328,8 @@ void mul_mat_nxm_mx1_with_lut(int m, int row_begin, int row_end, const block_ifa
 }
 
 
-lut_block *alloc_lut(int m) {
-    int blk_n = (m+QK_K-1)/QK_K;
+lut_block *alloc_lut(int k) {
+    int blk_n = (k+QK_K-1)/QK_K;
     return calloc(blk_n, sizeof(lut_block));
 }
 
@@ -418,9 +338,10 @@ void free_lut(lut_block *lut) {
     free(lut);
 }
 
-block_ifairy_1x3 *alloc_new_w(int n, int m) {
-    int blk_n = (m+QK_K-1)/QK_K;
-    int row_n = (n+15)/16;
+
+block_ifairy_1x3 *alloc_new_w(int m, int k) {
+    int blk_n = (k+QK_K-1)/QK_K;
+    int row_n = (m+15)/16;
     block_ifairy_1x3 *ptr = calloc(blk_n*row_n, sizeof(block_ifairy_1x3));
     for (int i = 0; i < blk_n*row_n; i++) {
         for (int j = 0; j < (QK_K+2)/3; j++) {
@@ -435,6 +356,7 @@ block_ifairy_1x3 *alloc_new_w(int n, int m) {
     }
     return ptr;
 }
+
 
 void free_new_w(block_ifairy_1x3 *w) {
     free(w);
@@ -477,8 +399,8 @@ static inline float32x2_t mul_mat_block_1x4_4x1(uint8_t a, float32_t *b, float32
 }
 
 
-void mul_mat_nxm_mx1(int m, int row_begin, int row_end, const block_ifairy *w, const float *act, float *dst) {
-    int block_n = (m + QK_K - 1) / QK_K;
+void mul_mat_nxm_mx1(int k, int row_begin, int row_end, const block_ifairy *w, const float *act, float *dst) {
+    int block_n = (k+QK_K-1)/QK_K;
     for (int row = row_begin; row <= row_end; row++) {
         for (int block = 0; block < block_n; block++) {
             for (int i = 0; i < QK_K/4; i++) {
@@ -501,3 +423,222 @@ void mul_mat_nxm_mx1(int m, int row_begin, int row_end, const block_ifairy *w, c
     }
 }
 
+
+
+// ================================ 原程序测试 ================================
+
+// void generate_lut_int8_2(int m, const float *act, int16_t *lut, float *lut_scale) { // m个复数
+//     int block_n = (m+QK_K-1)/QK_K;
+//     int ii = 0;
+//     for (int blk = 0; blk < block_n; blk++) {
+//         int act_begin = blk * QK_K * 2, act_end = ((blk+1)*QK_K-1)*2 < m*2 ? (blk+1)*QK_K*2-1 : m*2;
+//         float max_real = 0.0f, max_imag = 0.0f;
+//         // 计算缩放因子
+//         for (int i = act_begin; i <= act_end; i += 2) {
+//             float real = fabsf(act[i]);
+//             float imag = fabsf(act[i+1]);
+//             if (real > max_real) max_real = real;
+//             if (imag > max_imag) max_imag = imag;
+//         }
+//         float scale_real = max_real / 42.0f;
+//         float scale_imag = max_imag / 42.0f;
+//         lut_scale[blk*2  ] = scale_real;
+//         lut_scale[blk*2+1] = scale_imag;
+//         float inv_scale_real = 1.0f / scale_real;
+//         float inv_scale_imag = 1.0f / scale_imag;
+        
+//         // 生成lut表
+//         for (int i = act_begin; i <= act_end; i += 6) {
+//             int8_t r0, r1, r2, i0, i1, i2;
+//             if (i+6 > act_end) {
+//                 r0 = (int8_t)roundf(act[i]    * inv_scale_real);
+//                 i0 = (int8_t)roundf(-act[i+1] * inv_scale_imag);
+//                 r1 = 0;
+//                 i1 = 0;
+//                 r2 = 0;
+//                 i2 = 0;
+//             } else {
+//                 r0 = (int8_t)roundf(act[i]    * inv_scale_real);
+//                 i0 = (int8_t)roundf(-act[i+1] * inv_scale_imag);
+//                 r1 = (int8_t)roundf(act[i+2]  * inv_scale_real);
+//                 i1 = (int8_t)roundf(-act[i+3] * inv_scale_imag);
+//                 r2 = (int8_t)roundf(act[i+4]  * inv_scale_real);
+//                 i2 = (int8_t)roundf(-act[i+5] * inv_scale_imag);
+//             }
+
+//             // ac
+//             lut[ii] = -r0 - r1 - r2;
+//             lut[ii+4] = -r0 - r1 + r2;
+//             lut[ii+8] = -r0 - r1 + 0;
+//             lut[ii+12] = -r0 - r1 + 0;
+//             lut[ii+16] = -r0 + r1 - r2;
+//             lut[ii+20] = -r0 + r1 + r2;
+//             lut[ii+24] = -r0 + r1 + 0;
+//             lut[ii+28] = -r0 + r1 + 0;
+//             lut[ii+32] = -r0 + 0 - r2;
+//             lut[ii+36] = -r0 + 0 + r2;
+//             lut[ii+40] = -r0 + 0 + 0;
+//             lut[ii+44] = -r0 + 0 + 0;
+//             lut[ii+48] = -r0 + 0 - r2;
+//             lut[ii+52] = -r0 + 0 + r2;
+//             lut[ii+56] = -r0 + 0 + 0;
+//             lut[ii+60] = -r0 + 0 + 0;
+            
+//             // bd
+//             lut[ii+1] = 0 + 0 + 0;
+//             lut[ii+5] = 0 + 0 + 0;
+//             lut[ii+9] = 0 + 0 - i2;
+//             lut[ii+13] = 0 + 0 + i2;
+//             lut[ii+17] = 0 + 0 + 0;
+//             lut[ii+21] = 0 + 0 + 0;
+//             lut[ii+25] = 0 + 0 - i2;
+//             lut[ii+29] = 0 + 0 + i2;
+//             lut[ii+33] = 0 - i1 + 0;
+//             lut[ii+37] = 0 - i1 + 0;
+//             lut[ii+41] = 0 - i1 - i2;
+//             lut[ii+45] = 0 - i1 + i2;
+//             lut[ii+49] = 0 + i1 + 0;
+//             lut[ii+53] = 0 + i1 + 0;
+//             lut[ii+57] = 0 + i1 - i2;
+//             lut[ii+61] = 0 + i1 + i2;
+
+//             // ad
+//             lut[ii+2] = 0 + 0 + 0;
+//             lut[ii+6] = 0 + 0 + 0;
+//             lut[ii+10] = 0 + 0 - r2;
+//             lut[ii+14] = 0 + 0 + r2;
+//             lut[ii+18] = 0 + 0 + 0;
+//             lut[ii+22] = 0 + 0 + 0;
+//             lut[ii+26] = 0 + 0 - r2;
+//             lut[ii+30] = 0 + 0 + r2;
+//             lut[ii+34] = 0 - r1 + 0;
+//             lut[ii+38] = 0 - r1 + 0;
+//             lut[ii+42] = 0 - r1 - r2;
+//             lut[ii+46] = 0 - r1 + r2;
+//             lut[ii+50] = 0 + r1 + 0;
+//             lut[ii+54] = 0 + r1 + 0;
+//             lut[ii+58] = 0 + r1 - r2;
+//             lut[ii+62] = 0 + r1 + r2;
+
+//             // bc
+//             lut[ii+3] = -i0 - i1 - i2;
+//             lut[ii+7] = -i0 - i1 + i2;
+//             lut[ii+11] = -i0 - i1 + 0;
+//             lut[ii+15] = -i0 - i1 + 0;
+//             lut[ii+19] = -i0 + i1 - i2;
+//             lut[ii+23] = -i0 + i1 + i2;
+//             lut[ii+27] = -i0 + i1 + 0;
+//             lut[ii+31] = -i0 + i1 + 0;
+//             lut[ii+35] = -i0 + 0 - i2;
+//             lut[ii+39] = -i0 + 0 + i2;
+//             lut[ii+43] = -i0 + 0 + 0;
+//             lut[ii+47] = -i0 + 0 + 0;
+//             lut[ii+51] = -i0 + 0 - i2;
+//             lut[ii+55] = -i0 + 0 + i2;
+//             lut[ii+59] = -i0 + 0 + 0;
+//             lut[ii+63] = -i0 + 0 + 0;
+//             ii += 64;
+//         }
+//     }
+// }
+
+
+// void transpose_2(int n, int m, const block_ifairy *raw_w, block_ifairy_1x3_2 *w) { // n行m列的raw_w矩阵
+//     const int blk_n = (m+QK_K-1)/QK_K;
+//     const int in_blk_n = (QK_K+2)/3;
+//     for (int j = 0; j < n; j++) {
+//         for (int blk = 0; blk < blk_n; blk++) {
+//             int ii = 0;
+//             #pragma unroll
+//             for (int i = 0; i < QK_K/4; i+=3) {
+//                 const uint32_t *p = (uint32_t *)&(raw_w[j*blk_n + blk].qs[i]);
+//                 uint8_t iweight_1x3_0, iweight_1x3_1, iweight_1x3_2, iweight_1x3_3;
+//                 if (i+3 >= QK_K/4) {
+//                     uint32_t iweight_1x12 = p[0] << 16;
+//                     iweight_1x3_0 = iweight_1x12 >> 18 & 0b00111111; 
+//                     iweight_1x3_1 = iweight_1x12 >> 12 & 0b00111111;
+//                     w[j*blk_n + blk].qs[ii  ] = three_vals2index_uint8[iweight_1x3_0] | (iweight_1x3_0 << 2 & 0b11000000);
+//                     w[j*blk_n + blk].qs[ii+1] = three_vals2index_uint8[iweight_1x3_1] | (iweight_1x3_1 << 2 & 0b11000000);
+//                 } else {
+//                     uint32_t iweight_1x12 = __builtin_bswap32(*p) >> 8;
+//                     iweight_1x3_0 = iweight_1x12 >> 18 & 0b00111111; 
+//                     iweight_1x3_1 = iweight_1x12 >> 12 & 0b00111111;
+//                     iweight_1x3_2 = iweight_1x12 >> 6  & 0b00111111; 
+//                     iweight_1x3_3 = iweight_1x12       & 0b00111111;
+//                     w[j*blk_n + blk].qs[ii  ] = three_vals2index_uint8[iweight_1x3_0] | (iweight_1x3_0 << 2 & 0b11000000);
+//                     w[j*blk_n + blk].qs[ii+1] = three_vals2index_uint8[iweight_1x3_1] | (iweight_1x3_1 << 2 & 0b11000000);
+//                     w[j*blk_n + blk].qs[ii+2] = three_vals2index_uint8[iweight_1x3_2] | (iweight_1x3_2 << 2 & 0b11000000);
+//                     w[j*blk_n + blk].qs[ii+3] = three_vals2index_uint8[iweight_1x3_3] | (iweight_1x3_3 << 2 & 0b11000000);
+//                 }
+//                 ii += 4;
+//             }
+//             w[j*blk_n + blk].d_real = raw_w[j*blk_n + blk].d_real;
+//             w[j*blk_n + blk].d_imag = raw_w[j*blk_n + blk].d_imag;
+//         }
+//     }
+// }
+
+
+// void mul_mat_nxm_mx1_with_lut_2(int m, int row_begin, int row_end, const block_ifairy_1x3_2 *w, const int16_t *lut, const float *lut_scale, float *dst) {
+//     const int blk_n = (m+QK_K-1)/QK_K;
+//     const int in_blk_n = (QK_K+2)/3;
+//     for (int row = row_begin; row <= row_end; row++) {
+//         for (int blk = 0; blk < blk_n; blk++) {
+
+//             int16x4_t tmp = vdup_n_s16(0);
+//             #pragma unroll
+//             for (int i = 0; i < in_blk_n; i++) {
+//                 uint8_t iweight_16x3 = w[row*blk_n+blk].qs[i];
+//                 uint8_t index = (((iweight_16x3+i) << 2) + 1) & 0b00111111;
+//                 int16x4_t abcd = vld1_s16(&lut[blk*in_blk_n*64+i*64+index*4]); 
+//                 tmp = vadd_s16(tmp, abcd);
+//             }
+//             // 反量化，写回
+//             dst[(row)*2  ] += (float)(tmp[0]) * lut_scale[blk*2] * w[(row)*blk_n+blk].d_real + (float)(tmp[3]) * lut_scale[blk*2+1] * w[(row)*blk_n+blk].d_imag;
+//             dst[(row)*2+1] += (float)(tmp[1]) * lut_scale[blk*2] * w[(row)*blk_n+blk].d_imag + (float)(tmp[2]) * lut_scale[blk*2+1] * w[(row)*blk_n+blk].d_real;
+
+//         }
+//     }
+// }
+
+
+// int16_t *alloc_lut_2(int m) {
+//     int blk_n = (m+QK_K-1)/QK_K;
+//     int in_blk_n = (QK_K+2)/3;
+//     return calloc(blk_n*in_blk_n*64, sizeof(int16_t));
+// }
+
+
+// void free_lut_2(int16_t *lut) {
+//     free(lut);
+// }
+
+
+// block_ifairy_1x3_2 *alloc_new_w_2(int n, int m) {
+//     int blk_n = (m+QK_K-1)/QK_K;
+//     int row_n = (n+15)/16;
+//     block_ifairy_1x3_2 *ptr = calloc(blk_n*row_n*16, sizeof(block_ifairy_1x3_2));
+//     for (int i = 0; i < blk_n*row_n*16; i++) {
+//         for (int j = 0; j < (QK_K+2)/3; j++) {
+//             ptr[i].qs[j] = 0;
+//         }
+//         ptr[i].d_real = 0.0f;
+//         ptr[i].d_imag = 0.0f;
+//     }
+//     return ptr;
+// }
+
+
+// void free_new_w_2(block_ifairy_1x3_2 *w) {
+//     free(w);
+// }
+
+
+// float *alloc_lut_scale_2(int m) {
+//     int blk_n = (m+QK_K-1)/QK_K;
+//     return calloc(blk_n*2, sizeof(float));
+// }
+
+// void free_lut_scale_2(float *scale) {
+//     free(scale);
+// }

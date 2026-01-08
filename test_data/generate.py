@@ -2,8 +2,8 @@ import os
 import random
 
 def generate_matrix():
-    rows = 10240
-    cols = 10240
+    rows = 4096
+    cols = 4096
     output_file = "./test_data/w.txt"
     with open(output_file, "w") as f:
         for _ in range(rows):
@@ -15,11 +15,11 @@ def generate_matrix():
             f.write("".join(row) + "\n")
 
 def generate_act():
-    row = 20480
+    row = 4096*2
     output_file = "./test_data/act.txt"
     with open(output_file, "w") as f:
         for i in range(row):
-            value = random.randint(-42, 42)
+            value = random.uniform(-42, 42)
             if i % 2 == 0:
                 value *= 10
             # if value % 256 == 0:

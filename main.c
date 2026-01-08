@@ -132,6 +132,8 @@ int write_to_file_int8x16x2_t(const char *filename, int block, int begin, int en
 void compare(const block_ifairy *w, const float *act) {
     float *dst1 = calloc(ROWS*2, sizeof(float));
     float *dst2 = calloc(ROWS*2, sizeof(float));
+    float *dst3 = calloc(ROWS*2, sizeof(float));
+
     for(int i = 0; i < ROWS*2; i++) {
         dst1[i] = 0.0f;
         dst2[i] = 0.0f;
@@ -139,13 +141,27 @@ void compare(const block_ifairy *w, const float *act) {
     lut_block *lut = alloc_lut(COLS);
     block_ifairy_1x3 *w2 = alloc_new_w(ROWS, COLS);
     transpose(ROWS, COLS, w, w2);
-    long long t0 = now_ns();
     generate_lut_int8(COLS, act, lut);
+    long long t0 = now_ns();
     mul_mat_nxm_mx1_with_lut(COLS, 0, ROWS-1, w2, lut, dst2);
     long long t1 = now_ns();
     printf("查表计算，耗时: %lld us\n", (t1 - t0)/1000);
     free_lut(lut);
     free_new_w(w2);
+
+
+    // int16_t *lut2 = alloc_lut_2(COLS);
+    // float *lut_scale_2 = alloc_lut_scale_2(COLS);
+    // block_ifairy_1x3_2 *w3 = alloc_new_w_2(ROWS, COLS);
+    // transpose_2(ROWS, COLS, w, w3);
+    // generate_lut_int8_2(COLS, act, lut2, lut_scale_2);
+    // t0 = now_ns();
+    // mul_mat_nxm_mx1_with_lut_2(COLS, 0, ROWS-1, w3, lut2, lut_scale_2, dst3);
+    // t1 = now_ns();
+    // printf("查表计算2，耗时: %lld us\n", (t1 - t0)/1000);
+    // free_lut_2(lut2);
+    // free_lut_scale_2(lut_scale_2);
+    // free_new_w_2(w3);
 
     t0 = now_ns();
     mul_mat_nxm_mx1(COLS, 0, ROWS-1, w, act, dst1);
@@ -159,7 +175,7 @@ void compare(const block_ifairy *w, const float *act) {
             printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
             errors++;
         } else {
-            // printf("✅ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
+            printf("✅ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
         }
     }
     if (errors == 0) {
@@ -170,6 +186,7 @@ void compare(const block_ifairy *w, const float *act) {
 
     free(dst1);
     free(dst2);
+    free(dst3);
 }
 
 void sample(const block_ifairy *w, const float *act) {
