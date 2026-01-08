@@ -216,17 +216,21 @@ static const uint8_t three_vals2index_uint8[64] = {
 static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x4_t ilut) __attribute__((always_inline));
 static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x4_t ilut) {
 
+    const uint8x16_t mask_idx = vdupq_n_u8(0x3F);
+    const uint8x16_t mask_b6  = vdupq_n_u8(0x40);
+    const uint8x16_t mask_b7  = vdupq_n_u8(0x80);
+
     // index 适配
-    uint8x16_t index = vandq_u8(iweight_16x3, vdupq_n_u8(0b00111111));
+    uint8x16_t index = vandq_u8(iweight_16x3, mask_idx);
 
     // 设置标识
-    uint8x16_t fl0 = vtstq_u8(iweight_16x3, vdupq_n_u8(0b01000000));
-    uint8x16_t fl1 = vtstq_u8(iweight_16x3, vdupq_n_u8(0b10000000));
+    uint8x16_t fl0 = vtstq_u8(iweight_16x3, mask_b6);
+    uint8x16_t fl1 = vtstq_u8(iweight_16x3, mask_b7);
 
     //查询lut
     int8x16_t ac_00 = vqtbl1q_s8(ilut.val[0], index); // ad_10
-    int8x16_t ac_11 = vqtbl1q_s8(ilut.val[2], index); // ad_00
     int8x16_t bd_01 = vqtbl1q_s8(ilut.val[1], index); // bc_11
+    int8x16_t ac_11 = vqtbl1q_s8(ilut.val[2], index); // ad_00
     int8x16_t bd_11 = vqtbl1q_s8(ilut.val[3], index); // bc_00
 
     int8x16_t ac_01 = vnegq_s8(ac_00);                 // ad_11
@@ -236,9 +240,9 @@ static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x
 
 
     int8x16_t ac_l = vbslq_u8(fl0, ac_01, ac_00);
-    int8x16_t ac_h = vbslq_u8(fl0, ac_11, ac_10);
     int8x16_t ad_l = vbslq_u8(fl0, ac_10, ac_11);
     int8x16_t bc_l = vbslq_u8(fl0, bd_10, bd_11);
+    int8x16_t ac_h = vbslq_u8(fl0, ac_11, ac_10);
     int8x16_t bc_h = vbslq_u8(fl0, bd_01, bd_00);
     int8x16_t bd_h = vbslq_u8(fl0, bd_11, bd_10);
 
@@ -251,7 +255,7 @@ static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x
 }
 
 
-void transpose(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3 *w) { // m行k列的raw_w矩阵
+void transpose(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3 *w) { // n行m列的raw_w矩阵
     const int blk_n = (k+QK_K-1)/QK_K;
     const int in_blk_n = (QK_K+2)/3;
     for (int j = 0; j < m; j++) {
@@ -291,7 +295,11 @@ void mul_mat_nxm_mx1_with_lut(int k, int row_begin, int row_end, const block_ifa
     const int blk_n = (k+QK_K-1)/QK_K;
     const int in_blk_n = (QK_K+2)/3;
     for (int row = row_begin; row <= row_end; row+=16) {
+        const block_ifairy_1x3 *w_base = w + (row >> 4)*blk_n;
         for (int blk = 0; blk < blk_n; blk++) {
+            
+            const block_ifairy_1x3 *w_blk_base = w_base + blk;
+            const lut_block *lut_blk_base = lut + blk;
 
             int16x8x2_t block_dst_00 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
             int16x8x2_t block_dst_01 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
@@ -300,8 +308,9 @@ void mul_mat_nxm_mx1_with_lut(int k, int row_begin, int row_end, const block_ifa
             
             #pragma unroll
             for (int i = 0; i < in_blk_n; i++) {
-                uint8x16_t iweight_16x3 = vld1q_u8(w[(row/16)*blk_n+blk].qs[i]);
-                int8x16x4_t iret = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, lut[blk].v[i]);
+                __builtin_prefetch(w_blk_base -> qs[i]);
+                uint8x16_t iweight_16x3 = vld1q_u8(w_blk_base -> qs[i]);
+                int8x16x4_t iret = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, lut_blk_base -> v[i]);
 
                 block_dst_00.val[0] = vaddw_s8(block_dst_00.val[0],  vget_low_s8(iret.val[0]));
                 block_dst_00.val[1] = vaddw_s8(block_dst_00.val[1], vget_high_s8(iret.val[0]));
@@ -314,14 +323,24 @@ void mul_mat_nxm_mx1_with_lut(int k, int row_begin, int row_end, const block_ifa
             }
 
             // 反量化，写回
-            for (int j = 0; j < 8 && row+j <= row_end; j++) {
-                dst[(row+j)*2  ] += (float)(block_dst_00.val[0][j]) * lut[blk].d_real * w[(row/16)*blk_n+blk].d_real[j] + (float)(block_dst_11.val[0][j]) * lut[blk].d_imag * w[(row/16)*blk_n+blk].d_imag[j];
-                dst[(row+j)*2+1] += (float)(block_dst_01.val[0][j]) * lut[blk].d_real * w[(row/16)*blk_n+blk].d_imag[j] + (float)(block_dst_10.val[0][j]) * lut[blk].d_imag * w[(row/16)*blk_n+blk].d_real[j];
+            const float lr = lut[blk].d_real;
+            const float li = lut[blk].d_imag;
+            const int w_row = row >> 4;
+            const float *wr = w[w_row * blk_n + blk].d_real;
+            const float *wi = w[w_row * blk_n + blk].d_imag;
+            float *idst = dst + row * 2;
+            for (int j = 0; j <= (row_end - row < 7 ? row_end - row : 7); j++) {
+                float _wr = wr[j], _wi = wi[j];
+                idst[j*2  ] += (float)block_dst_00.val[0][j] * (lr * _wr) + (float)block_dst_11.val[0][j] * (li * _wi);
+                idst[j*2+1] += (float)block_dst_01.val[0][j] * (lr * _wi) + (float)block_dst_10.val[0][j] * (li * _wr);
             }
-
-            for (int j = 8; j < 16 && row+j <= row_end; j++) {
-                dst[(row+j)*2  ] += (float)(block_dst_00.val[1][j-8]) * lut[blk].d_real * w[(row/16)*blk_n+blk].d_real[j] + (float)(block_dst_11.val[1][j-8]) * lut[blk].d_imag * w[(row/16)*blk_n+blk].d_imag[j];
-                dst[(row+j)*2+1] += (float)(block_dst_01.val[1][j-8]) * lut[blk].d_real * w[(row/16)*blk_n+blk].d_imag[j] + (float)(block_dst_10.val[1][j-8]) * lut[blk].d_imag * w[(row/16)*blk_n+blk].d_real[j];
+            if (row_end - row >= 8) {
+                for (int j = 8; j <= (row_end - row < 15 ? row_end - row : 15); j++) {
+                    int jj = j - 8;
+                    float _wr = wr[j], _wi = wi[j];
+                    idst[j*2  ] += (float)block_dst_00.val[1][jj] * (lr * _wr) + (float)block_dst_11.val[1][jj] * (li * _wi);
+                    idst[j*2+1] += (float)block_dst_01.val[1][jj] * (lr * _wi) + (float)block_dst_10.val[1][jj] * (li * _wr);
+                }
             }
         }
     }
@@ -427,7 +446,7 @@ void mul_mat_nxm_mx1(int k, int row_begin, int row_end, const block_ifairy *w, c
 
 // ================================ 原程序测试 ================================
 
-// void generate_lut_int8_2(int m, const float *act, int16_t *lut, float *lut_scale) { // m个复数
+// void generate_lut_int8_2(int m, const float *act, int16_t *lut, float *lut_scale) { // rows个复数
 //     int block_n = (m+QK_K-1)/QK_K;
 //     int ii = 0;
 //     for (int blk = 0; blk < block_n; blk++) {
