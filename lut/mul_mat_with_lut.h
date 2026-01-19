@@ -23,10 +23,10 @@ typedef struct {
     float d_real, d_imag;
 } lut_block;
 
-// typedef struct {
-//     uint8_t qs[(QK_K+2)/3]; // 8 bits 3 elements
-//     float d_real, d_imag;
-// } block_ifairy_1x3_2;
+typedef struct {
+    uint8_t qs[(QK_K+2)/3]; // 8 bits 3 elements
+    float d_real, d_imag;
+} block_ifairy_1x3_2;
 
 typedef struct {
     uint8_t qs[(QK_K+2)/3][16]; // 8 bits 3 elements, 16 rows
@@ -39,22 +39,22 @@ block_ifairy_1x3 *alloc_new_w(int m, int k);
 void free_lut(lut_block *lut);
 void free_new_w(block_ifairy_1x3 *w);
 void generate_lut_int8(int k, const float *act, lut_block *lut);
-void mul_mat_nxm_mx1_with_lut(int k, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst);
+void mul_mat_mxk_kx1_with_lut(int k, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst);
 void transpose(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3 *w); 
 
 // === 原程序测试
-// int16_t *alloc_lut_2(int n);
-// block_ifairy_1x3_2 *alloc_new_w_2(int n, int m);
-// float *alloc_lut_scale_2(int n);
-// void free_lut_2(int16_t *lut);
-// void free_new_w_2(block_ifairy_1x3_2 *w);
-// void free_lut_scale_2(float* scale);
-// void generate_lut_int8_2(int m, const float *act, int16_t *lut, float *lut_scale);
-// void mul_mat_nxm_mx1_with_lut_2(int m, int row_begin, int row_end, const block_ifairy_1x3_2 *w, const int16_t *lut, const float *lut_scale, float *dst);
-// void transpose_2(int n, int m, const block_ifairy *raw_w, block_ifairy_1x3_2 *w); 
+int16_t *alloc_lut_2(int k);
+block_ifairy_1x3_2 *alloc_new_w_2(int m, int k);
+float *alloc_lut_scale_2(int k);
+void free_lut_2(int16_t *lut);
+void free_new_w_2(block_ifairy_1x3_2 *w);
+void free_lut_scale_2(float* scale);
+void generate_lut_int8_2(int k, const float *act, int16_t *lut, float *lut_scale);
+void mul_mat_mxk_kx1_with_lut_2(int k, int row_begin, int row_end, const block_ifairy_1x3_2 *w, const int16_t *lut, const float *lut_scale, float *dst);
+void transpose_2(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3_2 *w); 
 
 
 // === 验证程序
-void mul_mat_nxm_mx1(int m, int row_begin, int row_end, const block_ifairy *w, const float *act, float *dst);
+void mul_mat_mxk_kx1(int k, int row_begin, int row_end, const block_ifairy *w, const float *act, float *dst);
 
 #endif
