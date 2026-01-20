@@ -352,31 +352,20 @@ lut_block *alloc_lut(int k) {
 }
 
 
+block_ifairy_1x3 *alloc_w(int m, int k) {
+    int blk_n = (k+QK_K-1)/QK_K;
+    int row_n = (m+15)/16;
+    block_ifairy_1x3 *ptr = calloc(blk_n*row_n, sizeof(block_ifairy_1x3));
+    return ptr;
+}
+
+
 void free_lut(lut_block *lut) {
     free(lut);
 }
 
 
-block_ifairy_1x3 *alloc_new_w(int m, int k) {
-    int blk_n = (k+QK_K-1)/QK_K;
-    int row_n = (m+15)/16;
-    block_ifairy_1x3 *ptr = calloc(blk_n*row_n, sizeof(block_ifairy_1x3));
-    for (int i = 0; i < blk_n*row_n; i++) {
-        for (int j = 0; j < (QK_K+2)/3; j++) {
-            for (int k = 0; k < 16; k++) {
-                ptr[i].qs[j][k] = 0;
-            }
-        }
-        for (int k = 0; k < 16; k++) {
-            ptr[i].d_real[k] = 0.0f;
-            ptr[i].d_imag[k] = 0.0f;
-        }
-    }
-    return ptr;
-}
-
-
-void free_new_w(block_ifairy_1x3 *w) {
+void free_w(block_ifairy_1x3 *w) {
     free(w);
 }
 
@@ -448,7 +437,7 @@ void mul_mat_mxk_kx1(int k, int row_begin, int row_end, const block_ifairy *w, c
 static const int16_t sx[4] = { -1,  1,  0,  0 };
 static const int16_t sy[4] = {  0,  0, -1,  1 };
 
-void generate_lut_int8_2(int k, const float *act, int16_t *lut, float *lut_scale) {
+void generate_lut_int8_old(int k, const float *act, int16_t *lut, float *lut_scale) {
     int block_n = (k+QK_K-1)/QK_K;
     int ii = 0;
     for (int blk = 0; blk < block_n; blk++) {
@@ -461,8 +450,8 @@ void generate_lut_int8_2(int k, const float *act, int16_t *lut, float *lut_scale
             if (real > max_real) max_real = real;
             if (imag > max_imag) max_imag = imag;
         }
-        float scale_real = max_real / 42.0f;
-        float scale_imag = max_imag / 42.0f;
+        float scale_real = max_real / 128.0f;
+        float scale_imag = max_imag / 128.0f;
         lut_scale[blk*2  ] = scale_real;
         lut_scale[blk*2+1] = scale_imag;
         float inv_scale_real = 1.0f / scale_real;
@@ -521,7 +510,7 @@ void generate_lut_int8_2(int k, const float *act, int16_t *lut, float *lut_scale
 }
 
 
-void transpose_2(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3_2 *w) {
+void transpose_old(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3_old *w) {
     const int blk_n = (k+QK_K-1)/QK_K;
     for (int j = 0; j < m; j++) {
         for (int blk = 0; blk < blk_n; blk++) {
@@ -556,7 +545,7 @@ void transpose_2(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3_2 *w)
 }
 
 
-void mul_mat_mxk_kx1_with_lut_2(int k, int row_begin, int row_end, const block_ifairy_1x3_2 *w, const int16_t *lut, const float *lut_scale, float *dst) {
+void mul_mat_mxk_kx1_with_lut_old(int k, int row_begin, int row_end, const block_ifairy_1x3_old *w, const int16_t *lut, const float *lut_scale, float *dst) {
     const int blk_n = (k+QK_K-1)/QK_K;
     const int in_blk_n = (QK_K+2)/3;
     const int next_lut_blk = 256;
@@ -580,43 +569,37 @@ void mul_mat_mxk_kx1_with_lut_2(int k, int row_begin, int row_end, const block_i
 }
 
 
-int16_t *alloc_lut_2(int k) {
+int16_t *alloc_lut_v_old(int k) {
     int blk_n = (k+QK_K-1)/QK_K;
     int in_blk_n = (QK_K+2)/3;
     return calloc(blk_n*in_blk_n*256, sizeof(int16_t));
 }
 
 
-void free_lut_2(int16_t *lut) {
-    free(lut);
-}
-
-
-block_ifairy_1x3_2 *alloc_new_w_2(int m, int k) {
-    int blk_n = (k+QK_K-1)/QK_K;
-    int row_n = (m+15)/16;
-    block_ifairy_1x3_2 *ptr = calloc(blk_n*row_n*16, sizeof(block_ifairy_1x3_2));
-    for (int i = 0; i < blk_n*row_n*16; i++) {
-        for (int j = 0; j < (QK_K+2)/3; j++) {
-            ptr[i].qs[j] = 0;
-        }
-        ptr[i].d_real = 0.0f;
-        ptr[i].d_imag = 0.0f;
-    }
-    return ptr;
-}
-
-
-void free_new_w_2(block_ifairy_1x3_2 *w) {
-    free(w);
-}
-
-
-float *alloc_lut_scale_2(int k) {
+float *alloc_lut_scale_old(int k) {
     int blk_n = (k+QK_K-1)/QK_K;
     return calloc(blk_n*2, sizeof(float));
 }
 
-void free_lut_scale_2(float *scale) {
+
+block_ifairy_1x3_old *alloc_w_old(int m, int k) {
+    int blk_n = (k+QK_K-1)/QK_K;
+    int row_n = (m+15)/16;
+    block_ifairy_1x3_old *ptr = calloc(blk_n*row_n*16, sizeof(block_ifairy_1x3_old));
+    return ptr;
+}
+
+
+void free_lut_v_old(int16_t *lut) {
+    free(lut);
+}
+
+
+void free_lut_scale_old(float *scale) {
     free(scale);
+}
+
+
+void free_w_old(block_ifairy_1x3_old *w) {
+    free(w);
 }

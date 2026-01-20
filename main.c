@@ -7,8 +7,8 @@
 #include <time.h>
 
 
-#define M 256
-#define K 1024
+#define M 512
+#define K 2048
 
 
 static inline uint64_t now_ns(void) {
@@ -139,60 +139,71 @@ void compare(const block_ifairy *w, const float *act) {
         dst2[i] = 0.0f;
     }
 
+    // 验证程序
+    long long t0 = now_ns();
+    mul_mat_mxk_kx1(K, 0, M-1, w, act, dst1);
+    long long t1 = now_ns();
+    printf("直接计算,  耗时: %lld ns\n", (t1 - t0));
+
     // 16路查表
     lut_block *lut = alloc_lut(K);
-    block_ifairy_1x3 *w2 = alloc_new_w(M, K);
-    transpose(M, K, w, w2);
+    block_ifairy_1x3 *_w = alloc_w(M, K);
+    transpose(M, K, w, _w);
     generate_lut_int8(K, act, lut);
-    long long t0 = now_ns();
-    mul_mat_mxk_kx1_with_lut(K, 0, M-1, w2, lut, dst2);
-    long long t1 = now_ns();
+    t0 = now_ns();
+    mul_mat_mxk_kx1_with_lut(K, 0, M-1, _w, lut, dst2);
+    t1 = now_ns();
     printf("查表计算1, 耗时: %lld ns\n", (t1 - t0));
     free_lut(lut);
-    free_new_w(w2);
+    free_w(_w);
 
     // 1路查表
-    int16_t *lut2 = alloc_lut_2(K);
-    float *lut_scale_2 = alloc_lut_scale_2(K);
-    block_ifairy_1x3_2 *w3 = alloc_new_w_2(M, K);
-    transpose_2(M, K, w, w3);
-    generate_lut_int8_2(K, act, lut2, lut_scale_2);
+    int16_t *lut_v_old = alloc_lut_v_old(K);
+    float *lut_scale_old = alloc_lut_scale_old(K);
+    block_ifairy_1x3_old *_w_old = alloc_w_old(M, K);
+    transpose_old(M, K, w, _w_old);
+    generate_lut_int8_old(K, act, lut_v_old, lut_scale_old);
     t0 = now_ns();
-    mul_mat_mxk_kx1_with_lut_2(K, 0, M-1, w3, lut2, lut_scale_2, dst3);
+    mul_mat_mxk_kx1_with_lut_old(K, 0, M-1, _w_old, lut_v_old, lut_scale_old, dst3);
     t1 = now_ns();
     printf("查表计算2, 耗时: %lld ns\n", (t1 - t0));
-    free_lut_2(lut2);
-    free_lut_scale_2(lut_scale_2);
-    free_new_w_2(w3);
+    free_lut_v_old(lut_v_old);
+    free_lut_scale_old(lut_scale_old);
+    free_w_old(_w_old);
 
-    // 验证程序
-    t0 = now_ns();
-    mul_mat_mxk_kx1(K, 0, M-1, w, act, dst1);
-    t1 = now_ns();
-    printf("直接计算,  耗时: %lld ns\n", (t1 - t0));
 
 
     int errors = 0;
+    float max_mismatch = 0.0f;
     for (int i = 0; i < M*2; i++) {
-        if (fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 0.1) {
+        float mismatch = fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9);
+        if (mismatch > 0.1) {
             // printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
+            if (mismatch > max_mismatch) {
+                max_mismatch = mismatch;
+            }
             errors++;
         } else {
             // printf("✅ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
         }
     }
-    printf("查表计算1: 0.1 accuracy: %f\n", ((float)M*2 - (float)errors)/((float)M*2));
+    printf("查表计算1: 0.1 accuracy: %f, max_mismatch: %f\n", ((float)M*2 - (float)errors)/((float)M*2), max_mismatch);
     
     errors = 0;
+    max_mismatch = 0.0f;
     for (int i = 0; i < M*2; i++) {
-        if (fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9) > 0.1) {
+        float mismatch = fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9);
+        if (mismatch > 0.1) {
             // printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst3[i]);
+            if (mismatch > max_mismatch) {
+                max_mismatch = mismatch;
+            }
             errors++;
         } else {
             // printf("✅ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst3[i]);
         }
     }
-    printf("查表计算2: 0.1 accuracy: %f\n", ((float)M*2 - (float)errors)/((float)M*2));
+    printf("查表计算2: 0.1 accuracy: %f, max_mismatch: %f\n", ((float)M*2 - (float)errors)/((float)M*2), max_mismatch);
 
 
     free(dst1);
@@ -203,13 +214,13 @@ void compare(const block_ifairy *w, const float *act) {
 void sample(const block_ifairy *w, const float *act) {
     float *dst2 = calloc(K*2, sizeof(float));
     lut_block *lut = alloc_lut(M);
-    block_ifairy_1x3 *w2 = alloc_new_w(M, K);
-    transpose(M, K, w, w2);
+    block_ifairy_1x3 *_w = alloc_w(M, K);
+    transpose(M, K, w, _w);
     while(1) {
         generate_lut_int8(M, act, lut);
-        mul_mat_mxk_kx1_with_lut(K, 0, M-1, w2, lut, dst2);
+        mul_mat_mxk_kx1_with_lut(K, 0, M-1, _w, lut, dst2);
     }
-    free_new_w(w2);
+    free_w(_w);
     free_lut(lut);
     free(dst2);
 }
