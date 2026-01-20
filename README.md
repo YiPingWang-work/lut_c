@@ -1,0 +1,1 @@
+### mac运行: gcc -g -pg -O3 main.c ./lut/mul_mat_with_lut.c -o main && ./main

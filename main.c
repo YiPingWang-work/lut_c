@@ -7,8 +7,8 @@
 #include <time.h>
 
 
-#define ROWS 4096
-#define COLS 4096
+#define M 256
+#define K 1024
 
 
 static inline uint64_t now_ns(void) {
@@ -35,7 +35,7 @@ int load_w_bit(const char *path, block_ifairy *w) {
     int elem_bits = 0;
 
     int c;
-    while ((c = fgetc(fp)) != EOF && block_idx < (ROWS*COLS/QK_K)) {
+    while ((c = fgetc(fp)) != EOF && block_idx < (M*K/QK_K)) {
         if (c == '\n' || c == '\r') continue;
         if (c != '0' && c != '1')  continue;
 
@@ -71,9 +71,9 @@ int load_w_bit(const char *path, block_ifairy *w) {
 
     fclose(fp);
 
-    if (block_idx != (ROWS*COLS/QK_K)) {
+    if (block_idx != (M*K/QK_K)) {
         fprintf(stderr, "warning: loaded %d / %d blocks\n",
-                block_idx, (ROWS*COLS/QK_K));
+                block_idx, (M*K/QK_K));
     }
 
     return 0;
@@ -130,35 +130,35 @@ int write_to_file_int8x16x2_t(const char *filename, int block, int begin, int en
 
 
 void compare(const block_ifairy *w, const float *act) {
-    float *dst1 = calloc(ROWS*2, sizeof(float));
-    float *dst2 = calloc(ROWS*2, sizeof(float));
-    float *dst3 = calloc(ROWS*2, sizeof(float));
+    float *dst1 = calloc(M*2, sizeof(float));
+    float *dst2 = calloc(M*2, sizeof(float));
+    float *dst3 = calloc(M*2, sizeof(float));
 
-    for(int i = 0; i < ROWS*2; i++) {
+    for(int i = 0; i < M*2; i++) {
         dst1[i] = 0.0f;
         dst2[i] = 0.0f;
     }
 
     // 16路查表
-    lut_block *lut = alloc_lut(COLS);
-    block_ifairy_1x3 *w2 = alloc_new_w(ROWS, COLS);
-    transpose(ROWS, COLS, w, w2);
-    generate_lut_int8(COLS, act, lut);
+    lut_block *lut = alloc_lut(K);
+    block_ifairy_1x3 *w2 = alloc_new_w(M, K);
+    transpose(M, K, w, w2);
+    generate_lut_int8(K, act, lut);
     long long t0 = now_ns();
-    mul_mat_mxk_kx1_with_lut(COLS, 0, ROWS-1, w2, lut, dst2);
+    mul_mat_mxk_kx1_with_lut(K, 0, M-1, w2, lut, dst2);
     long long t1 = now_ns();
     printf("查表计算1, 耗时: %lld ns\n", (t1 - t0));
     free_lut(lut);
     free_new_w(w2);
 
     // 1路查表
-    int16_t *lut2 = alloc_lut_2(COLS);
-    float *lut_scale_2 = alloc_lut_scale_2(COLS);
-    block_ifairy_1x3_2 *w3 = alloc_new_w_2(ROWS, COLS);
-    transpose_2(ROWS, COLS, w, w3);
-    generate_lut_int8_2(COLS, act, lut2, lut_scale_2);
+    int16_t *lut2 = alloc_lut_2(K);
+    float *lut_scale_2 = alloc_lut_scale_2(K);
+    block_ifairy_1x3_2 *w3 = alloc_new_w_2(M, K);
+    transpose_2(M, K, w, w3);
+    generate_lut_int8_2(K, act, lut2, lut_scale_2);
     t0 = now_ns();
-    mul_mat_mxk_kx1_with_lut_2(COLS, 0, ROWS-1, w3, lut2, lut_scale_2, dst3);
+    mul_mat_mxk_kx1_with_lut_2(K, 0, M-1, w3, lut2, lut_scale_2, dst3);
     t1 = now_ns();
     printf("查表计算2, 耗时: %lld ns\n", (t1 - t0));
     free_lut_2(lut2);
@@ -167,32 +167,32 @@ void compare(const block_ifairy *w, const float *act) {
 
     // 验证程序
     t0 = now_ns();
-    mul_mat_mxk_kx1(COLS, 0, ROWS-1, w, act, dst1);
+    mul_mat_mxk_kx1(K, 0, M-1, w, act, dst1);
     t1 = now_ns();
     printf("直接计算,  耗时: %lld ns\n", (t1 - t0));
 
 
     int errors = 0;
-    for (int i = 0; i < ROWS*2; i++) {
-        if (fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 0.3) {
+    for (int i = 0; i < M*2; i++) {
+        if (fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 0.1) {
             // printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
             errors++;
         } else {
             // printf("✅ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
         }
     }
-    printf("查表计算1: 0.3 accuracy: %f\n", ((float)ROWS*2 - (float)errors)/((float)ROWS*2));
+    printf("查表计算1: 0.1 accuracy: %f\n", ((float)M*2 - (float)errors)/((float)M*2));
     
     errors = 0;
-    for (int i = 0; i < ROWS*2; i++) {
-        if (fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9) > 0.3) {
+    for (int i = 0; i < M*2; i++) {
+        if (fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9) > 0.1) {
             // printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst3[i]);
             errors++;
         } else {
             // printf("✅ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst3[i]);
         }
     }
-    printf("查表计算2: 0.3 accuracy: %f\n", ((float)ROWS*2 - (float)errors)/((float)ROWS*2));
+    printf("查表计算2: 0.1 accuracy: %f\n", ((float)M*2 - (float)errors)/((float)M*2));
 
 
     free(dst1);
@@ -201,13 +201,13 @@ void compare(const block_ifairy *w, const float *act) {
 }
 
 void sample(const block_ifairy *w, const float *act) {
-    float *dst2 = calloc(COLS*2, sizeof(float));
-    lut_block *lut = alloc_lut(ROWS);
-    block_ifairy_1x3 *w2 = alloc_new_w(ROWS, COLS);
-    transpose(ROWS, COLS, w, w2);
+    float *dst2 = calloc(K*2, sizeof(float));
+    lut_block *lut = alloc_lut(M);
+    block_ifairy_1x3 *w2 = alloc_new_w(M, K);
+    transpose(M, K, w, w2);
     while(1) {
-        generate_lut_int8(ROWS, act, lut);
-        mul_mat_mxk_kx1_with_lut(COLS, 0, ROWS-1, w2, lut, dst2);
+        generate_lut_int8(M, act, lut);
+        mul_mat_mxk_kx1_with_lut(K, 0, M-1, w2, lut, dst2);
     }
     free_new_w(w2);
     free_lut(lut);
@@ -218,13 +218,13 @@ int main() {
     const char *matrix_file = "./test_data/w.txt";
     const char *act_file    = "./test_data/act.txt";
 
-    block_ifairy *w = calloc((size_t)ROWS * COLS/QK_K, sizeof(block_ifairy));
+    block_ifairy *w = calloc((size_t)M * K/QK_K, sizeof(block_ifairy));
     if (!w) { fprintf(stderr, "OOM w\n"); return 1; }
-    float *act = calloc((size_t)COLS * 2, sizeof(float));
+    float *act = calloc((size_t)K * 2, sizeof(float));
     if (!act) { fprintf(stderr, "OOM act\n"); return 1; }
     int rc = load_w_bit(matrix_file, w);
     if (rc != 0) { fprintf(stderr, "Failed to read matrix (%d)\n", rc); free(w); return 2; }
-    rc = load_act_float(act_file, act, COLS*2);
+    rc = load_act_float(act_file, act, K*2);
     if (rc != 0) { fprintf(stderr, "Failed to read act (%d)\n", rc); free(w); return 2; }
     compare(w, act);
     // sample(w, act);

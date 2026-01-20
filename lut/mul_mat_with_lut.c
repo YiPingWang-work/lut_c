@@ -562,15 +562,14 @@ void mul_mat_mxk_kx1_with_lut_2(int k, int row_begin, int row_end, const block_i
     const int next_lut_blk = 256;
     const int lut_blk_n = 4; 
     for (int row = row_begin; row <= row_end; row++) {
+        const int w_base = row*blk_n;
         for (int blk = 0; blk < blk_n; blk++) {
-
             int32x4_t tmp = vdupq_n_s32(0);
-            const int lut_base = (blk*in_blk_n)*next_lut_blk;
-            const int w_base = row*blk_n;
+            const int16_t *lut_base = lut + (blk*in_blk_n)*next_lut_blk;
             #pragma unroll
             for (int i = 0; i < in_blk_n; i++) {
-                uint8_t iweight_16x3 = w[w_base+blk].qs[i];
-                int16x4_t abcd = vld1_s16(&lut[lut_base+next_lut_blk*i+iweight_16x3*lut_blk_n]);
+                const uint8_t iweight_16x3 = w[w_base+blk].qs[i];
+                int16x4_t abcd = vld1_s16(lut_base+next_lut_blk*i+iweight_16x3*lut_blk_n);
                 tmp = vaddw_s16(tmp, abcd);
             }
             // 反量化，写回
