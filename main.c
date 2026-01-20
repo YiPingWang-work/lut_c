@@ -54,7 +54,7 @@ int load_w_bit(const char *path, block_ifairy *w) {
             elem_bits = 0;
             elem_idx++;
         }
-        w[block_idx].d_real = rand_float() * 100;
+        w[block_idx].d_real = rand_float();
         w[block_idx].d_imag = rand_float();
 
         // 一个 block 完成：512 bit
