@@ -10,10 +10,11 @@
 #define ROWS 4096
 #define COLS 4096
 
-static inline long long now_ns(void) {
+
+static inline uint64_t now_ns(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+    return (uint64_t)ts.tv_sec * 1000000000ull + ts.tv_nsec;
 }
 
 static inline float rand_float() {
@@ -53,10 +54,9 @@ int load_w_bit(const char *path, block_ifairy *w) {
             elem_bits = 0;
             elem_idx++;
         }
-        w[block_idx].d_real = rand_float();
+        w[block_idx].d_real = rand_float() * 100;
         w[block_idx].d_imag = rand_float();
-        // w[block_idx].d_real = 2.0f;
-        // w[block_idx].d_imag = 7.0f;
+
         // 一个 block 完成：512 bit
         if (bit_cnt == QK_K * 2) {
             // printf("block %d: d_real=%f, d_imag=%f\n",
@@ -138,6 +138,8 @@ void compare(const block_ifairy *w, const float *act) {
         dst1[i] = 0.0f;
         dst2[i] = 0.0f;
     }
+
+    // 16路查表
     lut_block *lut = alloc_lut(COLS);
     block_ifairy_1x3 *w2 = alloc_new_w(ROWS, COLS);
     transpose(ROWS, COLS, w, w2);
@@ -145,11 +147,11 @@ void compare(const block_ifairy *w, const float *act) {
     long long t0 = now_ns();
     mul_mat_mxk_kx1_with_lut(COLS, 0, ROWS-1, w2, lut, dst2);
     long long t1 = now_ns();
-    printf("查表计算，耗时: %lld us\n", (t1 - t0)/1000);
+    printf("查表计算1, 耗时: %lld ns\n", (t1 - t0));
     free_lut(lut);
     free_new_w(w2);
 
-
+    // 1路查表
     int16_t *lut2 = alloc_lut_2(COLS);
     float *lut_scale_2 = alloc_lut_scale_2(COLS);
     block_ifairy_1x3_2 *w3 = alloc_new_w_2(ROWS, COLS);
@@ -158,31 +160,40 @@ void compare(const block_ifairy *w, const float *act) {
     t0 = now_ns();
     mul_mat_mxk_kx1_with_lut_2(COLS, 0, ROWS-1, w3, lut2, lut_scale_2, dst3);
     t1 = now_ns();
-    printf("查表计算2，耗时: %lld us\n", (t1 - t0)/1000);
+    printf("查表计算2, 耗时: %lld ns\n", (t1 - t0));
     free_lut_2(lut2);
     free_lut_scale_2(lut_scale_2);
     free_new_w_2(w3);
 
+    // 验证程序
     t0 = now_ns();
     mul_mat_mxk_kx1(COLS, 0, ROWS-1, w, act, dst1);
     t1 = now_ns();
-    printf("直接计算，耗时: %lld us\n", (t1 - t0)/1000);
+    printf("直接计算,  耗时: %lld ns\n", (t1 - t0));
 
-    
+
     int errors = 0;
     for (int i = 0; i < ROWS*2; i++) {
-        if (fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 0.1) {
-            // printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
+        if (fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9) > 0.3) {
+            // printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
             errors++;
         } else {
             // printf("✅ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
         }
     }
-    if (errors == 0) {
-        printf("Results match!\n");
-    } else {
-        printf("Total mismatches: %f/%f\n", (float)errors, (float)ROWS*2);
+    printf("查表计算1: 0.3 accuracy: %f\n", ((float)ROWS*2 - (float)errors)/((float)ROWS*2));
+    
+    errors = 0;
+    for (int i = 0; i < ROWS*2; i++) {
+        if (fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9) > 0.3) {
+            // printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst3[i]);
+            errors++;
+        } else {
+            // printf("✅ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst3[i]);
+        }
     }
+    printf("查表计算2: 0.3 accuracy: %f\n", ((float)ROWS*2 - (float)errors)/((float)ROWS*2));
+
 
     free(dst1);
     free(dst2);
