@@ -4,8 +4,8 @@
 #include "mul_mat_with_lut.h"
 
 
-void generate_lut_int8(int k, const float *act, lut_block *lut) {
-    int blk_n = (k+QK_K-1)/QK_K;
+void generate_lut_q8(int k, const float *act, lut_block *lut) {
+    const int blk_n = (k+QK_K-1)/QK_K;
     for (int blk = 0; blk < blk_n; blk++) {
         int act_begin = blk * QK_K * 2, act_end = ((blk+1)*QK_K-1)*2 < k*2 ? (blk+1)*QK_K*2-1 : k*2;
         float max_real = 0.0f, max_imag = 0.0f;
@@ -130,11 +130,173 @@ void generate_lut_int8(int k, const float *act, lut_block *lut) {
                 -i0 + 0  + 0,
             };
 
-            lut[blk].v[(i - act_begin)/6] = (int8x16x4_t){.val = ac, bd, ad, bc};
+            lut[blk].v[(i-act_begin)/6] = (int8x16x4_t){.val = ac, bd, ad, bc};
         }
 
     }
 }
+
+
+void generate_lut_q16(int k, const float *act, lut_block_q16 *lut) {
+    const int blk_n = (k+QK_K-1)/QK_K;
+    const uint16_t mask_lo = 0b0000000011111111;
+    const uint16_t mask_hi = 0b1111111100000000;
+    for (int blk = 0; blk < blk_n; blk++) {
+        int act_begin = blk * QK_K * 2, act_end = ((blk+1)*QK_K-1)*2 < k*2 ? (blk+1)*QK_K*2-1 : k*2;
+        float max_real = 0.0f, max_imag = 0.0f;
+        // 计算缩放因子
+        for (int i = act_begin; i <= act_end; i += 2) {
+            float real = fabsf(act[i]);
+            float imag = fabsf(act[i+1]);
+            if (real > max_real) max_real = real;
+            if (imag > max_imag) max_imag = imag;
+        }
+        float scale_real = max_real / 128.0f;
+        float scale_imag = max_imag / 128.0f;
+        lut[blk].d_real = scale_real;
+        lut[blk].d_imag = scale_imag;
+        float inv_scale_real = 1.0f / scale_real;
+        float inv_scale_imag = 1.0f / scale_imag;
+        
+        // 生成lut表
+        for (int i = act_begin; i <= act_end; i += 6) {
+            int16_t r0, r1, r2, i0, i1, i2;
+            if (i+6 > act_end) {
+                r0 = (int16_t)roundf(act[i]    * inv_scale_real);
+                i0 = (int16_t)roundf(-act[i+1] * inv_scale_imag);
+                r1 = 0;
+                i1 = 0;
+                r2 = 0;
+                i2 = 0;
+            } else {
+                r0 = (int16_t)roundf(act[i]    * inv_scale_real);
+                i0 = (int16_t)roundf(-act[i+1] * inv_scale_imag);
+                r1 = (int16_t)roundf(act[i+2]  * inv_scale_real);
+                i1 = (int16_t)roundf(-act[i+3] * inv_scale_imag);
+                r2 = (int16_t)roundf(act[i+4]  * inv_scale_real);
+                i2 = (int16_t)roundf(-act[i+5] * inv_scale_imag);
+            }
+
+            int16x8x2_t ac = {
+                (int16x8_t){
+                -r0 - r1 - r2,
+                -r0 - r1 + r2,
+                -r0 - r1 + 0,
+                -r0 - r1 + 0,
+
+                -r0 + r1 - r2,
+                -r0 + r1 + r2,
+                -r0 + r1 + 0,
+                -r0 + r1 + 0,
+                },
+                (int16x8_t){
+                -r0 + 0  - r2,
+                -r0 + 0  + r2,
+                -r0 + 0  + 0,
+                -r0 + 0  + 0,
+
+                -r0 + 0  - r2,
+                -r0 + 0  + r2,
+                -r0 + 0  + 0,
+                -r0 + 0  + 0,
+                }
+            };
+
+            int16x8x2_t bd = {
+                (int16x8_t){
+                0 + 0 + 0,
+                0 + 0 + 0,
+                0 + 0 - i2,
+                0 + 0 + i2,
+
+                0 + 0 + 0,
+                0 + 0 + 0,
+                0 + 0 - i2,
+                0 + 0 + i2,
+                },
+                (int16x8_t){
+                0 - i1 + 0,
+                0 - i1 + 0,
+                0 - i1 - i2,
+                0 - i1 + i2,
+
+                0 + i1 + 0,
+                0 + i1 + 0,
+                0 + i1 - i2,
+                0 + i1 + i2,
+                }
+            };
+
+            int16x8x2_t ad = {
+                (int16x8_t){
+                0 + 0 + 0,
+                0 + 0 + 0,
+                0 + 0 - r2,
+                0 + 0 + r2,
+
+                0 + 0 + 0,
+                0 + 0 + 0,
+                0 + 0 - r2,
+                0 + 0 + r2,
+                },
+                (int16x8_t){
+                0 - r1 + 0,
+                0 - r1 + 0,
+                0 - r1 - r2,
+                0 - r1 + r2,
+
+                0 + r1 + 0,
+                0 + r1 + 0,
+                0 + r1 - r2,
+                0 + r1 + r2,
+                }
+            };
+            
+            int16x8x2_t bc = {
+                (int16x8_t){
+                -i0 - i1 - i2,
+                -i0 - i1 + i2,
+                -i0 - i1 + 0,
+                -i0 - i1 + 0,
+
+                -i0 + i1 - i2,
+                -i0 + i1 + i2,
+                -i0 + i1 + 0,
+                -i0 + i1 + 0,
+                },
+                (int16x8_t){
+                -i0 + 0  - i2,
+                -i0 + 0  + i2,
+                -i0 + 0  + 0,
+                -i0 + 0  + 0,
+
+                -i0 + 0  - i2,
+                -i0 + 0  + i2,
+                -i0 + 0  + 0,
+                -i0 + 0  + 0,
+                }
+            };
+            uint8x16_t ac_lo = vcombine_u8(vmovn_u16(vreinterpretq_u16_s16(ac.val[0])), vmovn_u16(vreinterpretq_u16_s16(ac.val[1])));
+            uint8x16_t ac_hi = vcombine_u8(vshrn_n_u16(vreinterpretq_u16_s16(ac.val[0]), 8), vshrn_n_u16(vreinterpretq_u16_s16(ac.val[1]), 8));
+            uint8x16_t bd_lo = vcombine_u8(vmovn_u16(vreinterpretq_u16_s16(bd.val[0])), vmovn_u16(vreinterpretq_u16_s16(bd.val[1])));
+            uint8x16_t bd_hi = vcombine_u8(vshrn_n_u16(vreinterpretq_u16_s16(bd.val[0]), 8), vshrn_n_u16(vreinterpretq_u16_s16(bd.val[1]), 8));
+            uint8x16_t ad_lo = vcombine_u8(vmovn_u16(vreinterpretq_u16_s16(ad.val[0])), vmovn_u16(vreinterpretq_u16_s16(ad.val[1])));
+            uint8x16_t ad_hi = vcombine_u8(vshrn_n_u16(vreinterpretq_u16_s16(ad.val[0]), 8), vshrn_n_u16(vreinterpretq_u16_s16(ad.val[1]), 8));
+            uint8x16_t bc_lo = vcombine_u8(vmovn_u16(vreinterpretq_u16_s16(bc.val[0])), vmovn_u16(vreinterpretq_u16_s16(bc.val[1])));
+            uint8x16_t bc_hi = vcombine_u8(vshrn_n_u16(vreinterpretq_u16_s16(bc.val[0]), 8), vshrn_n_u16(vreinterpretq_u16_s16(bc.val[1]), 8));
+            lut[blk].v[2*(i-act_begin)/6  ] = (uint8x16x4_t){.val = ac_lo, bd_lo, ad_lo, bc_lo};
+            lut[blk].v[2*(i-act_begin)/6+1] = (uint8x16x4_t){.val = ac_hi, bd_hi, ad_hi, bc_hi};
+        }
+
+    }
+}
+
+
+void generate_lut_q8_block_ifairy_q16(int k, const block_ifairy_q16 *act, lut_block *lut) {
+    // TODO 根据量化后的block_ifairy_q16制作lut
+
+}
+
 
 
 static const uint8_t three_vals2index_uint8[64] = {
@@ -263,10 +425,10 @@ static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x
     uint8x16_t fl1 = vtstq_u8(iweight_16x3, mask_b7);
 
     //查询lut
-    int8x16_t ac_00 = vqtbl1q_s8(ilut.val[0], index); // ad_10
-    int8x16_t bd_01 = vqtbl1q_s8(ilut.val[1], index); // bc_11
-    int8x16_t ac_11 = vqtbl1q_s8(ilut.val[2], index); // ad_00
-    int8x16_t bd_11 = vqtbl1q_s8(ilut.val[3], index); // bc_00
+    int8x16_t ac_00 = vqtbl1q_s8(ilut.val[0], index);  // ad_10
+    int8x16_t bd_01 = vqtbl1q_s8(ilut.val[1], index);  // bc_11
+    int8x16_t ac_11 = vqtbl1q_s8(ilut.val[2], index);  // ad_00
+    int8x16_t bd_11 = vqtbl1q_s8(ilut.val[3], index);  // bc_00
 
     int8x16_t ac_01 = vnegq_s8(ac_00);                 // ad_11
     int8x16_t ac_10 = vnegq_s8(ac_11);                 // ad_01
@@ -290,7 +452,7 @@ static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x
 }
 
 
-void mul_mat_mxk_kx1_with_lut(int k, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst) {
+void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst) {
     const int blk_n = (k+QK_K-1)/QK_K;
     const int in_blk_n = (QK_K+2)/3;
     for (int row = row_begin; row <= row_end; row+=16) {
@@ -346,9 +508,149 @@ void mul_mat_mxk_kx1_with_lut(int k, int row_begin, int row_end, const block_ifa
 }
 
 
-lut_block *alloc_lut(int k) {
+static inline int16x8x2_t combine_u8_to_s16(uint8x16_t lo, uint8x16_t hi) {
+    uint8x8_t lo0 = vget_low_u8(lo);
+    uint8x8_t lo1 = vget_high_u8(lo);
+    uint8x8_t hi0 = vget_low_u8(hi);
+    uint8x8_t hi1 = vget_high_u8(hi);
+
+    uint16x8_t lo_u16_0 = vmovl_u8(lo0);
+    uint16x8_t lo_u16_1 = vmovl_u8(lo1);
+    uint16x8_t hi_u16_0 = vmovl_u8(hi0);
+    uint16x8_t hi_u16_1 = vmovl_u8(hi1);
+
+    hi_u16_0 = vshlq_n_u16(hi_u16_0, 8);
+    hi_u16_1 = vshlq_n_u16(hi_u16_1, 8);
+
+    return (int16x8x2_t) {
+        vreinterpretq_s16_u16(vorrq_u16(hi_u16_0, lo_u16_0)),
+        vreinterpretq_s16_u16(vorrq_u16(hi_u16_1, lo_u16_1))
+    };
+}
+
+static inline int16x8x2_t add_s16x8x2(int16x8x2_t a, int16x8x2_t b) __attribute__((always_inline));
+static inline int16x8x2_t add_s16x8x2(int16x8x2_t a, int16x8x2_t b) {
+    return (int16x8x2_t) {
+        vaddq_s16(a.val[0], b.val[0]),
+        vaddq_s16(a.val[1], b.val[1])
+    };
+}
+
+
+static inline int16x16x4_t mul_mat_block_16x3_3x1_with_lut_q16(uint8x16_t iweight_16x3, uint8x16x4_t ilut_lo, uint8x16x4_t ilut_hi) __attribute__((always_inline));
+static inline int16x16x4_t mul_mat_block_16x3_3x1_with_lut_q16(uint8x16_t iweight_16x3, uint8x16x4_t ilut_lo, uint8x16x4_t ilut_hi) {
+
+    const uint8x16_t mask_idx = vdupq_n_u8(0b00111111);
+    const uint8x16_t mask_b6  = vdupq_n_u8(0b01000000);
+    const uint8x16_t mask_b7  = vdupq_n_u8(0b10000000);
+
+    // index 适配
+    uint8x16_t index = vandq_u8(iweight_16x3, mask_idx);
+
+    // 设置标识
+    uint8x16_t fl0 = vtstq_u8(iweight_16x3, mask_b6);
+    uint8x16_t fl1 = vtstq_u8(iweight_16x3, mask_b7);
+
+    //查询lut
+    uint8x16_t ac_lo_00 = vqtbl1q_u8(ilut_lo.val[0], index); // ad_lo_10
+    uint8x16_t bd_lo_01 = vqtbl1q_u8(ilut_lo.val[1], index); // bc_lo_11
+    uint8x16_t ac_lo_11 = vqtbl1q_u8(ilut_lo.val[2], index); // ad_lo_00
+    uint8x16_t bd_lo_11 = vqtbl1q_u8(ilut_lo.val[3], index); // bc_lo_00
+
+    uint8x16_t ac_hi_00 = vqtbl1q_u8(ilut_lo.val[0], index); // ad_hi_10
+    uint8x16_t bd_hi_01 = vqtbl1q_u8(ilut_lo.val[1], index); // bc_hi_11
+    uint8x16_t ac_hi_11 = vqtbl1q_u8(ilut_lo.val[2], index); // ad_hi_00
+    uint8x16_t bd_hi_11 = vqtbl1q_u8(ilut_lo.val[3], index); // bc_hi_00
+
+    // TODO: 执行组合
+
+    // TODO: 生成负数
+
+    // TODO: 对称处理
+
+    // TODO: 构建返回值返回
+
+    return (int16x16x4_t){};
+}
+
+
+
+void mul_mat_mxk_kx1_with_lut_q16(int k, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block_q16 *lut, float *dst) {
+    const int blk_n = (k+QK_K-1)/QK_K;
+    const int in_blk_n = (QK_K+2)/3;
+    for (int row = row_begin; row <= row_end; row+=16) {
+        const block_ifairy_1x3 *w_base = w + (row >> 4)*blk_n;
+        for (int blk = 0; blk < blk_n; blk++) {
+            
+            const block_ifairy_1x3 *w_blk_base = w_base + blk;
+            const lut_block_q16 *lut_blk_base = lut + blk;
+
+            int16x8x2_t block_dst_00 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
+            int16x8x2_t block_dst_01 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
+            int16x8x2_t block_dst_10 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
+            int16x8x2_t block_dst_11 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
+            
+            #pragma unroll
+            for (int i = 0; i < in_blk_n; i++) {
+                __builtin_prefetch(w_blk_base -> qs[i]);
+                uint8x16_t iweight_16x3 = vld1q_u8(w_blk_base -> qs[i]);
+                int16x16x4_t iret = mul_mat_block_16x3_3x1_with_lut_q16(iweight_16x3, lut_blk_base -> v[2*i  ], lut_blk_base -> v[2*i+1]);
+
+                block_dst_00 = add_s16x8x2(block_dst_00, iret.v[0]);
+                block_dst_01 = add_s16x8x2(block_dst_01, iret.v[1]);
+                block_dst_10 = add_s16x8x2(block_dst_10, iret.v[2]);
+                block_dst_11 = add_s16x8x2(block_dst_11, iret.v[3]);
+            }
+
+            // 反量化，写回
+            const float lr = lut[blk].d_real;
+            const float li = lut[blk].d_imag;
+            const int w_row = row >> 4;
+            const float *wr = w[w_row * blk_n + blk].d_real;
+            const float *wi = w[w_row * blk_n + blk].d_imag;
+            float *idst = dst + row * 2;
+            for (int j = 0; j <= (row_end - row < 7 ? row_end - row : 7); j++) {
+                float _wr = wr[j], _wi = wi[j];
+                idst[j*2  ] += (float)block_dst_00.val[0][j] * (lr * _wr) + (float)block_dst_11.val[0][j] * (li * _wi);
+                idst[j*2+1] += (float)block_dst_01.val[0][j] * (lr * _wi) + (float)block_dst_10.val[0][j] * (li * _wr);
+            }
+            if (row_end - row >= 8) {
+                for (int j = 8; j <= (row_end - row < 15 ? row_end - row : 15); j++) {
+                    int jj = j - 8;
+                    float _wr = wr[j], _wi = wi[j];
+                    idst[j*2  ] += (float)block_dst_00.val[1][jj] * (lr * _wr) + (float)block_dst_11.val[1][jj] * (li * _wi);
+                    idst[j*2+1] += (float)block_dst_01.val[1][jj] * (lr * _wi) + (float)block_dst_10.val[1][jj] * (li * _wr);
+                }
+            }
+        }
+    }
+}
+
+
+void mul_mat_mxk_kxn_with_lut_q8_base(int k, int row_begin, int row_end, int col_begin, int col_end, const block_ifairy_1x3 *w, const lut_block *lut_base, float *dst_base) {
+    const int blk_n = (k+QK_K-1)/QK_K;
+    for (int col = col_begin; col <= col_end; col++) {
+        float *dst = dst_base + col*k;
+        const lut_block *lut = lut_base + col*blk_n;
+        mul_mat_mxk_kx1_with_lut_q8(k, row_begin, row_end, w, lut_base, dst_base);
+    }
+}
+
+
+void mul_mat_mxk_kxn_with_lut_q8(int k, int n, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst) {
+    mul_mat_mxk_kxn_with_lut_q8_base(k, row_begin, row_end, 0, n-1, w, lut, dst);
+}
+
+
+lut_block *alloc_lut_q8(int k) {
     int blk_n = (k+QK_K-1)/QK_K;
     return calloc(blk_n, sizeof(lut_block));
+}
+
+
+lut_block_q16 *alloc_lut_q16(int k) {
+    int blk_n = (k+QK_K-1)/QK_K;
+    return calloc(blk_n, sizeof(lut_block_q16));
 }
 
 
@@ -360,7 +662,12 @@ block_ifairy_1x3 *alloc_w(int m, int k) {
 }
 
 
-void free_lut(lut_block *lut) {
+void free_lut_q8(lut_block *lut) {
+    free(lut);
+}
+
+
+void free_lut_q16(lut_block_q16 *lut) {
     free(lut);
 }
 
@@ -434,10 +741,10 @@ void mul_mat_mxk_kx1(int k, int row_begin, int row_end, const block_ifairy *w, c
 
 // ================================ 原程序测试 ================================
 
-static const int16_t sx[4] = { -1,  1,  0,  0 };
-static const int16_t sy[4] = {  0,  0, -1,  1 };
+static const int8_t sx[4] = { -1,  1,  0,  0 };
+static const int8_t sy[4] = {  0,  0, -1,  1 };
 
-void generate_lut_int8_old(int k, const float *act, int16_t *lut, float *lut_scale) {
+void generate_lut_q16_old(int k, const float *act, int16_t *lut, float *lut_scale) {
     int block_n = (k+QK_K-1)/QK_K;
     int ii = 0;
     for (int blk = 0; blk < block_n; blk++) {
@@ -458,21 +765,21 @@ void generate_lut_int8_old(int k, const float *act, int16_t *lut, float *lut_sca
         float inv_scale_imag = 1.0f / scale_imag;
         // 生成lut表
         for (int i = act_begin; i <= act_end; i += 6) {
-            int8_t r0, r1, r2, i0, i1, i2;
+            int16_t r0, r1, r2, i0, i1, i2;
             if (i+6 > act_end) {
-                r0 = (int8_t)roundf(act[i]    * inv_scale_real);
-                i0 = (int8_t)roundf(-act[i+1] * inv_scale_imag);
+                r0 = (int16_t)roundf(act[i]    * inv_scale_real);
+                i0 = (int16_t)roundf(-act[i+1] * inv_scale_imag);
                 r1 = 0;
                 i1 = 0;
                 r2 = 0;
                 i2 = 0;
             } else {
-                r0 = (int8_t)roundf(act[i]    * inv_scale_real);
-                i0 = (int8_t)roundf(-act[i+1] * inv_scale_imag);
-                r1 = (int8_t)roundf(act[i+2]  * inv_scale_real);
-                i1 = (int8_t)roundf(-act[i+3] * inv_scale_imag);
-                r2 = (int8_t)roundf(act[i+4]  * inv_scale_real);
-                i2 = (int8_t)roundf(-act[i+5] * inv_scale_imag);
+                r0 = (int16_t)roundf(act[i]    * inv_scale_real);
+                i0 = (int16_t)roundf(-act[i+1] * inv_scale_imag);
+                r1 = (int16_t)roundf(act[i+2]  * inv_scale_real);
+                i1 = (int16_t)roundf(-act[i+3] * inv_scale_imag);
+                r2 = (int16_t)roundf(act[i+4]  * inv_scale_real);
+                i2 = (int16_t)roundf(-act[i+5] * inv_scale_imag);
             }
 
             for (int _i = 0; _i < 4; _i++) {
@@ -545,7 +852,7 @@ void transpose_old(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3_old
 }
 
 
-void mul_mat_mxk_kx1_with_lut_old(int k, int row_begin, int row_end, const block_ifairy_1x3_old *w, const int16_t *lut, const float *lut_scale, float *dst) {
+void mul_mat_mxk_kx1_with_lut_q16_old(int k, int row_begin, int row_end, const block_ifairy_1x3_old *w, const int16_t *lut, const float *lut_scale, float *dst) {
     const int blk_n = (k+QK_K-1)/QK_K;
     const int in_blk_n = (QK_K+2)/3;
     const int next_lut_blk = 256;
@@ -569,7 +876,7 @@ void mul_mat_mxk_kx1_with_lut_old(int k, int row_begin, int row_end, const block
 }
 
 
-int16_t *alloc_lut_v_old(int k) {
+int16_t *alloc_lut_v_q16_old(int k) {
     int blk_n = (k+QK_K-1)/QK_K;
     int in_blk_n = (QK_K+2)/3;
     return calloc(blk_n*in_blk_n*256, sizeof(int16_t));
@@ -590,7 +897,7 @@ block_ifairy_1x3_old *alloc_w_old(int m, int k) {
 }
 
 
-void free_lut_v_old(int16_t *lut) {
+void free_lut_v_q16_old(int16_t *lut) {
     free(lut);
 }
 

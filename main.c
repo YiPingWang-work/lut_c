@@ -146,28 +146,28 @@ void compare(const block_ifairy *w, const float *act) {
     printf("直接计算,  耗时: %lld ns\n", (t1 - t0));
 
     // 16路查表
-    lut_block *lut = alloc_lut(K);
+    lut_block *lut = alloc_lut_q8(K);
     block_ifairy_1x3 *_w = alloc_w(M, K);
     transpose(M, K, w, _w);
-    generate_lut_int8(K, act, lut);
+    generate_lut_q8(K, act, lut);
     t0 = now_ns();
-    mul_mat_mxk_kx1_with_lut(K, 0, M-1, _w, lut, dst2);
+    mul_mat_mxk_kx1_with_lut_q8(K, 0, M-1, _w, lut, dst2);
     t1 = now_ns();
     printf("查表计算1, 耗时: %lld ns\n", (t1 - t0));
-    free_lut(lut);
+    free_lut_q8(lut);
     free_w(_w);
 
     // 1路查表
-    int16_t *lut_v_old = alloc_lut_v_old(K);
+    int16_t *lut_v_old = alloc_lut_v_q16_old(K);
     float *lut_scale_old = alloc_lut_scale_old(K);
     block_ifairy_1x3_old *_w_old = alloc_w_old(M, K);
     transpose_old(M, K, w, _w_old);
-    generate_lut_int8_old(K, act, lut_v_old, lut_scale_old);
+    generate_lut_q16_old(K, act, lut_v_old, lut_scale_old);
     t0 = now_ns();
-    mul_mat_mxk_kx1_with_lut_old(K, 0, M-1, _w_old, lut_v_old, lut_scale_old, dst3);
+    mul_mat_mxk_kx1_with_lut_q16_old(K, 0, M-1, _w_old, lut_v_old, lut_scale_old, dst3);
     t1 = now_ns();
     printf("查表计算2, 耗时: %lld ns\n", (t1 - t0));
-    free_lut_v_old(lut_v_old);
+    free_lut_v_q16_old(lut_v_old);
     free_lut_scale_old(lut_scale_old);
     free_w_old(_w_old);
 
@@ -213,15 +213,15 @@ void compare(const block_ifairy *w, const float *act) {
 
 void sample(const block_ifairy *w, const float *act) {
     float *dst2 = calloc(K*2, sizeof(float));
-    lut_block *lut = alloc_lut(M);
+    lut_block *lut = alloc_lut_q8(M);
     block_ifairy_1x3 *_w = alloc_w(M, K);
     transpose(M, K, w, _w);
     while(1) {
-        generate_lut_int8(M, act, lut);
-        mul_mat_mxk_kx1_with_lut(K, 0, M-1, _w, lut, dst2);
+        generate_lut_q8(M, act, lut);
+        mul_mat_mxk_kx1_with_lut_q8(K, 0, M-1, _w, lut, dst2);
     }
     free_w(_w);
-    free_lut(lut);
+    free_lut_q8(lut);
     free(dst2);
 }
 
