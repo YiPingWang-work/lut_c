@@ -20,17 +20,17 @@ typedef struct {
     float d_real, d_imag;
 } block_ifairy;
 
-typedef struct __attribute__((aligned(64))) {
+typedef struct __attribute__((aligned(128))) {
     int8x16x4_t v[(QK_K+2)/3]; // 每3个复数一个lut条目(ac bd ad bc)，256个复数需要86个条目
     float d_real, d_imag;
 } lut_block;
 
-typedef struct __attribute__((aligned(64))) {
+typedef struct __attribute__((aligned(128))) {
     uint8_t qs[(QK_K+2)/3]; // 8 bits 3 elements
     float d_real, d_imag;
 } block_ifairy_1x3_old;
 
-typedef struct __attribute__((aligned(64))) {
+typedef struct __attribute__((aligned(128))) {
     uint8_t qs[(QK_K+2)/3][16]; // 8 bits 3 elements, 16 rows
     float d_real[16];
     float d_imag[16];

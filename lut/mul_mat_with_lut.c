@@ -16,8 +16,8 @@ void generate_lut_int8(int k, const float *act, lut_block *lut) {
             if (real > max_real) max_real = real;
             if (imag > max_imag) max_imag = imag;
         }
-        float scale_real = max_real / 42.0f;
-        float scale_imag = max_imag / 42.0f;
+        float scale_real = max_real / 42.6f;
+        float scale_imag = max_imag / 42.6f;
         lut[blk].d_real = scale_real;
         lut[blk].d_imag = scale_imag;
         float inv_scale_real = 1.0f / scale_real;
@@ -213,6 +213,41 @@ static const uint8_t three_vals2index_uint8[64] = {
 };
 
 
+void transpose(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3 *w) {
+    const int blk_n = (k+QK_K-1)/QK_K;
+    for (int j = 0; j < m; j++) {
+        for (int blk = 0; blk < blk_n; blk++) {
+            int ii = 0;
+            #pragma unroll
+            for (int i = 0; i < QK_K/4; i+=3) {
+                const uint32_t *p = (uint32_t *)&(raw_w[j*blk_n + blk].qs[i]);
+                uint8_t iweight_1x3_0, iweight_1x3_1, iweight_1x3_2, iweight_1x3_3;
+                if (i+3 >= QK_K/4) {
+                    uint32_t iweight_1x12 = p[0] << 16;
+                    iweight_1x3_0 = iweight_1x12 >> 18 & 0b00111111; 
+                    iweight_1x3_1 = iweight_1x12 >> 12 & 0b00111111;
+                    w[(j/16)*blk_n + blk].qs[ii  ][j%16] = three_vals2index_uint8[iweight_1x3_0] | (iweight_1x3_0 << 2 & 0b11000000);
+                    w[(j/16)*blk_n + blk].qs[ii+1][j%16] = three_vals2index_uint8[iweight_1x3_1] | (iweight_1x3_1 << 2 & 0b11000000);
+                } else {
+                    uint32_t iweight_1x12 = __builtin_bswap32(*p) >> 8;
+                    iweight_1x3_0 = iweight_1x12 >> 18 & 0b00111111; 
+                    iweight_1x3_1 = iweight_1x12 >> 12 & 0b00111111;
+                    iweight_1x3_2 = iweight_1x12 >> 6  & 0b00111111; 
+                    iweight_1x3_3 = iweight_1x12       & 0b00111111;
+                    w[(j/16)*blk_n + blk].qs[ii  ][j%16] = three_vals2index_uint8[iweight_1x3_0] | (iweight_1x3_0 << 2 & 0b11000000);
+                    w[(j/16)*blk_n + blk].qs[ii+1][j%16] = three_vals2index_uint8[iweight_1x3_1] | (iweight_1x3_1 << 2 & 0b11000000);
+                    w[(j/16)*blk_n + blk].qs[ii+2][j%16] = three_vals2index_uint8[iweight_1x3_2] | (iweight_1x3_2 << 2 & 0b11000000);
+                    w[(j/16)*blk_n + blk].qs[ii+3][j%16] = three_vals2index_uint8[iweight_1x3_3] | (iweight_1x3_3 << 2 & 0b11000000);
+                }
+                ii += 4;
+            }
+            w[(j/16)*blk_n + blk].d_real[j%16] = raw_w[j*blk_n + blk].d_real;
+            w[(j/16)*blk_n + blk].d_imag[j%16] = raw_w[j*blk_n + blk].d_imag;
+        }
+    }
+}
+
+
 static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x4_t ilut) __attribute__((always_inline));
 static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x4_t ilut) {
 
@@ -252,41 +287,6 @@ static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x
         vbslq_u8(fl1, bc_h, bc_l),
         vbslq_u8(fl1, bd_h, bc_h)
     }};
-}
-
-
-void transpose(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3 *w) {
-    const int blk_n = (k+QK_K-1)/QK_K;
-    for (int j = 0; j < m; j++) {
-        for (int blk = 0; blk < blk_n; blk++) {
-            int ii = 0;
-            #pragma unroll
-            for (int i = 0; i < QK_K/4; i+=3) {
-                const uint32_t *p = (uint32_t *)&(raw_w[j*blk_n + blk].qs[i]);
-                uint8_t iweight_1x3_0, iweight_1x3_1, iweight_1x3_2, iweight_1x3_3;
-                if (i+3 >= QK_K/4) {
-                    uint32_t iweight_1x12 = p[0] << 16;
-                    iweight_1x3_0 = iweight_1x12 >> 18 & 0b00111111; 
-                    iweight_1x3_1 = iweight_1x12 >> 12 & 0b00111111;
-                    w[(j/16)*blk_n + blk].qs[ii  ][j%16] = three_vals2index_uint8[iweight_1x3_0] | (iweight_1x3_0 << 2 & 0b11000000);
-                    w[(j/16)*blk_n + blk].qs[ii+1][j%16] = three_vals2index_uint8[iweight_1x3_1] | (iweight_1x3_1 << 2 & 0b11000000);
-                } else {
-                    uint32_t iweight_1x12 = __builtin_bswap32(*p) >> 8;
-                    iweight_1x3_0 = iweight_1x12 >> 18 & 0b00111111; 
-                    iweight_1x3_1 = iweight_1x12 >> 12 & 0b00111111;
-                    iweight_1x3_2 = iweight_1x12 >> 6  & 0b00111111; 
-                    iweight_1x3_3 = iweight_1x12       & 0b00111111;
-                    w[(j/16)*blk_n + blk].qs[ii  ][j%16] = three_vals2index_uint8[iweight_1x3_0] | (iweight_1x3_0 << 2 & 0b11000000);
-                    w[(j/16)*blk_n + blk].qs[ii+1][j%16] = three_vals2index_uint8[iweight_1x3_1] | (iweight_1x3_1 << 2 & 0b11000000);
-                    w[(j/16)*blk_n + blk].qs[ii+2][j%16] = three_vals2index_uint8[iweight_1x3_2] | (iweight_1x3_2 << 2 & 0b11000000);
-                    w[(j/16)*blk_n + blk].qs[ii+3][j%16] = three_vals2index_uint8[iweight_1x3_3] | (iweight_1x3_3 << 2 & 0b11000000);
-                }
-                ii += 4;
-            }
-            w[(j/16)*blk_n + blk].d_real[j%16] = raw_w[j*blk_n + blk].d_real;
-            w[(j/16)*blk_n + blk].d_imag[j%16] = raw_w[j*blk_n + blk].d_imag;
-        }
-    }
 }
 
 

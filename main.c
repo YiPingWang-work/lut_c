@@ -7,8 +7,8 @@
 #include <time.h>
 
 
-#define M 512
-#define K 2048
+int M = 512;
+int K = 8192;
 
 
 static inline uint64_t now_ns(void) {
@@ -178,7 +178,7 @@ void compare(const block_ifairy *w, const float *act) {
     for (int i = 0; i < M*2; i++) {
         float mismatch = fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9);
         if (mismatch > 0.1) {
-            // printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst3[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
+            printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
             if (mismatch > max_mismatch) {
                 max_mismatch = mismatch;
             }
@@ -225,7 +225,12 @@ void sample(const block_ifairy *w, const float *act) {
     free(dst2);
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        return -1;
+    }
+    M = atoi(argv[1]);
+    K = atoi(argv[2]);
     const char *matrix_file = "./test_data/w.txt";
     const char *act_file    = "./test_data/act.txt";
 

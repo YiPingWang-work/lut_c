@@ -1,1 +1,1 @@
-### mac运行: python3 ./test_data/generate.py && gcc -g -pg -O3 main.c ./lut/mul_mat_with_lut.c -o main && ./main
+### mac运行: python3 ./test_data/generate.py && gcc -g -pg -O3 main.c ./lut/mul_mat_with_lut.c -o main && ./main 384 1536
