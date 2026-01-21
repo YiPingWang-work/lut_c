@@ -178,7 +178,7 @@ void compare(const block_ifairy *w, const float *act) {
     for (int i = 0; i < M*2; i++) {
         float mismatch = fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9);
         if (mismatch > 0.1) {
-            printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
+            // printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst2[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst2[i]);
             if (mismatch > max_mismatch) {
                 max_mismatch = mismatch;
             }
