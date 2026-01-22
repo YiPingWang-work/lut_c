@@ -11,7 +11,7 @@ void generate_lut_q8(int k, const float *act, lut_block *lut) {
         float max_real = 0.0f, max_imag = 0.0f;
         // 计算缩放因子
         for (int i = act_begin; i <= act_end; i += 2) {
-            float real = fabsf(act[i]);
+            float real = fabsf(act[i  ]);
             float imag = fabsf(act[i+1]);
             if (real > max_real) max_real = real;
             if (imag > max_imag) max_imag = imag;
@@ -137,9 +137,148 @@ void generate_lut_q8(int k, const float *act, lut_block *lut) {
 }
 
 
-void generate_lut_q8_block_ifairy_q16(int k, const block_ifairy_q16 *act, lut_block *lut) {
-    // TODO 根据量化后的block_ifairy_q16制作lut
+void act_float_2_block_ifairy_q16(int k, const float *act_float, block_ifairy_q16 *act_q16) {
+    const int blk_n = (k+QK_K-1)/QK_K;
+    for (int blk = 0; blk < blk_n; blk++) {
+        int act_begin = blk * QK_K * 2, act_end = ((blk+1)*QK_K-1)*2 < k*2 ? (blk+1)*QK_K*2-1 : k*2;
+        float max_real = 0.0f, max_imag = 0.0f;
+        // 计算缩放因子
+        for (int i = act_begin; i <= act_end; i += 2) {
+            float real = fabsf(act_float[i  ]);
+            float imag = fabsf(act_float[i+1]);
+            if (real > max_real) max_real = real;
+            if (imag > max_imag) max_imag = imag;
+        }
+        float scale_real = max_real / 42.6f;
+        float scale_imag = max_imag / 42.6f;
 
+        act_q16[blk].d_real = scale_real;
+        act_q16[blk].d_imag = scale_imag;
+        float inv_scale_real = 1.0f / scale_real;
+        float inv_scale_imag = 1.0f / scale_imag;
+        for (int i = act_begin; i <= act_end; i += 2) {
+            act_q16[blk].x_real[(i-act_begin)/2] = (uint8_t)(roundf(act_float[i  ] * inv_scale_real));
+            act_q16[blk].x_imag[(i-act_begin)/2] = (uint8_t)(roundf(act_float[i+1] * inv_scale_imag));
+        }
+        
+    }
+}
+
+
+void generate_lut_q8_block_ifairy_q16(int k, const block_ifairy_q16 *act, lut_block *lut) {
+    const int blk_n = (k+QK_K-1)/QK_K;
+    for (int blk = 0; blk < blk_n; blk++) {
+        lut[blk].d_real = act[blk].d_real;
+        lut[blk].d_imag = act[blk].d_imag;
+        for (int i = 0; i < QK_K; i+=3) {
+        int8_t r0, i0, r1, i1, r2, i2;
+            if (i+3 >= QK_K) {
+                r0 = (int8_t) act[blk].x_real[i  ];
+                i0 = (int8_t)-act[blk].x_imag[i  ];
+                r1 = (int8_t) 0;
+                i1 = (int8_t) 0;
+                r2 = (int8_t) 0;
+                i2 = (int8_t) 0;
+            } else {
+                r0 = (int8_t) act[blk].x_real[i  ];
+                i0 = (int8_t)-act[blk].x_imag[i  ];
+                r1 = (int8_t) act[blk].x_real[i+1];
+                i1 = (int8_t)-act[blk].x_imag[i+1];
+                r2 = (int8_t) act[blk].x_real[i+2];
+                i2 = (int8_t)-act[blk].x_imag[i+2];
+            } 
+
+            int8x16_t ac = {
+                -r0 - r1 - r2,
+                -r0 - r1 + r2,
+                -r0 - r1 + 0,
+                -r0 - r1 + 0,
+
+                -r0 + r1 - r2,
+                -r0 + r1 + r2,
+                -r0 + r1 + 0,
+                -r0 + r1 + 0,
+
+                -r0 + 0  - r2,
+                -r0 + 0  + r2,
+                -r0 + 0  + 0,
+                -r0 + 0  + 0,
+
+                -r0 + 0  - r2,
+                -r0 + 0  + r2,
+                -r0 + 0  + 0,
+                -r0 + 0  + 0,
+            };
+
+            int8x16_t bd = {
+                0 + 0 + 0,
+                0 + 0 + 0,
+                0 + 0 - i2,
+                0 + 0 + i2,
+
+                0 + 0 + 0,
+                0 + 0 + 0,
+                0 + 0 - i2,
+                0 + 0 + i2,
+
+                0 - i1 + 0,
+                0 - i1 + 0,
+                0 - i1 - i2,
+                0 - i1 + i2,
+
+                0 + i1 + 0,
+                0 + i1 + 0,
+                0 + i1 - i2,
+                0 + i1 + i2,
+            };
+
+            int8x16_t ad = {
+                0 + 0 + 0,
+                0 + 0 + 0,
+                0 + 0 - r2,
+                0 + 0 + r2,
+
+                0 + 0 + 0,
+                0 + 0 + 0,
+                0 + 0 - r2,
+                0 + 0 + r2,
+
+                0 - r1 + 0,
+                0 - r1 + 0,
+                0 - r1 - r2,
+                0 - r1 + r2,
+
+                0 + r1 + 0,
+                0 + r1 + 0,
+                0 + r1 - r2,
+                0 + r1 + r2,
+            };
+            
+            int8x16_t bc = {
+                -i0 - i1 - i2,
+                -i0 - i1 + i2,
+                -i0 - i1 + 0,
+                -i0 - i1 + 0,
+
+                -i0 + i1 - i2,
+                -i0 + i1 + i2,
+                -i0 + i1 + 0,
+                -i0 + i1 + 0,
+
+                -i0 + 0  - i2,
+                -i0 + 0  + i2,
+                -i0 + 0  + 0,
+                -i0 + 0  + 0,
+
+                -i0 + 0  - i2,
+                -i0 + 0  + i2,
+                -i0 + 0  + 0,
+                -i0 + 0  + 0,
+            };
+
+            lut[blk].v[i/3] = (int8x16x4_t){.val = ac, bd, ad, bc};
+        }
+    }
 }
 
 
@@ -314,7 +453,6 @@ void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_
             
             #pragma unroll
             for (int i = 0; i < in_blk_n; i++) {
-                __builtin_prefetch(w_blk_base -> qs[i]);
                 uint8x16_t iweight_16x3 = vld1q_u8(w_blk_base -> qs[i]);
                 int8x16x4_t iret = mul_mat_block_16x3_3x1_with_lut(iweight_16x3, lut_blk_base -> v[i]);
 
@@ -368,6 +506,12 @@ void mul_mat_mxk_kxn_with_lut_q8(int k, int n, int row_begin, int row_end, const
 }
 
 
+block_ifairy_q16 *alloc_act_block_ifairy_q16(int k) {
+    int blk_n = (k+QK_K-1)/QK_K;
+    return calloc(blk_n, sizeof(block_ifairy_q16)); 
+}
+
+
 lut_block *alloc_lut_q8(int k) {
     int blk_n = (k+QK_K-1)/QK_K;
     return calloc(blk_n, sizeof(lut_block));
@@ -379,6 +523,11 @@ block_ifairy_1x3 *alloc_w(int m, int k) {
     int row_n = (m+15)/16;
     block_ifairy_1x3 *ptr = calloc(blk_n*row_n, sizeof(block_ifairy_1x3));
     return ptr;
+}
+
+
+void free_act_block_ifairy_q16(block_ifairy_q16 *act) {
+    free(act);
 }
 
 

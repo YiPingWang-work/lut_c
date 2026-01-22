@@ -54,8 +54,8 @@ int load_w_bit(const char *path, block_ifairy *w) {
             elem_bits = 0;
             elem_idx++;
         }
-        w[block_idx].d_real = rand_float();
-        w[block_idx].d_imag = rand_float();
+        w[block_idx].d_real = rand_float() * 2;
+        w[block_idx].d_imag = rand_float() * 7;
 
         // 一个 block 完成：512 bit
         if (bit_cnt == QK_K * 2) {
@@ -146,16 +146,20 @@ void compare(const block_ifairy *w, const float *act) {
     printf("直接计算,  耗时: %lld ns\n", (t1 - t0));
 
     // 16路查表
+    block_ifairy_q16 *act_block = alloc_act_block_ifairy_q16(K);
     lut_block *lut = alloc_lut_q8(K);
     block_ifairy_1x3 *_w = alloc_w(M, K);
     transpose(M, K, w, _w);
-    generate_lut_q8(K, act, lut);
+    // generate_lut_q8(K, act, lut);
+    act_float_2_block_ifairy_q16(K, act, act_block);
+    generate_lut_q8_block_ifairy_q16(K, act_block, lut);
     t0 = now_ns();
     mul_mat_mxk_kx1_with_lut_q8(K, 0, M-1, _w, lut, dst2);
     t1 = now_ns();
     printf("查表计算1, 耗时: %lld ns\n", (t1 - t0));
     free_lut_q8(lut);
     free_w(_w);
+    free_act_block_ifairy_q16(act_block);
 
     // 1路查表
     int16_t *lut_v_old = alloc_lut_v_q16_old(K);

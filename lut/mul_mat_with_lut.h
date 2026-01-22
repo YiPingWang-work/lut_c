@@ -47,13 +47,16 @@ typedef struct __attribute__((aligned(128))) {
 } block_ifairy_q16;
 
 void generate_lut_q8(int k, const float *act, lut_block *lut);
+void act_float_2_block_ifairy_q16(int k, const float *act_float, block_ifairy_q16 *act_q16);
 void generate_lut_q8_block_ifairy_q16(int k, const block_ifairy_q16 *act, lut_block *lut);
 void transpose(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3 *w);
 void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst);
 void mul_mat_mxk_kxn_with_lut_q8_base(int k, int row_begin, int row_end, int col_begin, int col_end, const block_ifairy_1x3 *w, const lut_block *lut_base, float *dst_base);
 void mul_mat_mxk_kxn_with_lut_q8(int k, int n, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst);
+block_ifairy_q16 *alloc_act_block_ifairy_q16(int k);
 lut_block *alloc_lut_q8(int k);
 block_ifairy_1x3 *alloc_w(int m, int k);
+void free_act_block_ifairy_q16(block_ifairy_q16 *act);
 void free_lut_q8(lut_block *lut);
 void free_w(block_ifairy_1x3 *w);
 
