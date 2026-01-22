@@ -10,9 +10,9 @@
 #include <math.h>
 #include <stdalign.h>
 
-
+// #define __M__ALIGNED_16 // 要求M必须被16整除
+// #define __M__ALIGNED_8  // 要求M必须被8整除但不被16整除
 #define QK_K 256
-// typedef uint16_t ggml_half;
 
 
 typedef struct {

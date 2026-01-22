@@ -160,12 +160,12 @@ void act_float_2_block_ifairy_q16(int k, const float *act_float, block_ifairy_q1
             act_q16[blk].x_real[(i-act_begin)/2] = (uint8_t)(roundf(act_float[i  ] * inv_scale_real));
             act_q16[blk].x_imag[(i-act_begin)/2] = (uint8_t)(roundf(act_float[i+1] * inv_scale_imag));
         }
-        
     }
 }
 
 
 void generate_lut_q8_block_ifairy_q16(int k, const block_ifairy_q16 *act, lut_block *lut) {
+    // TODO: 是否可以使用simd进行加速？
     const int blk_n = (k+QK_K-1)/QK_K;
     for (int blk = 0; blk < blk_n; blk++) {
         lut[blk].d_real = act[blk].d_real;
@@ -276,7 +276,7 @@ void generate_lut_q8_block_ifairy_q16(int k, const block_ifairy_q16 *act, lut_bl
                 -i0 + 0  + 0,
             };
 
-            lut[blk].v[i/3] = (int8x16x4_t){.val = ac, bd, ad, bc};
+            lut[blk].v[i/3] = (int8x16x4_t){.val= ac, bd, ad, bc};
         }
     }
 }
@@ -427,12 +427,12 @@ static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x
     int8x16_t bc_h = vbslq_u8(fl0, bd_01, bd_00);
     int8x16_t bd_h = vbslq_u8(fl0, bd_11, bd_10);
 
-    return (int8x16x4_t){{
-        vbslq_u8(fl1, ac_h, ac_l),
-        vbslq_u8(fl1, ac_l, ad_l),
-        vbslq_u8(fl1, bc_h, bc_l),
-        vbslq_u8(fl1, bd_h, bc_h)
-    }};
+    return (int8x16x4_t){
+        .val=   vbslq_u8(fl1, ac_h, ac_l),
+                vbslq_u8(fl1, ac_l, ad_l),
+                vbslq_u8(fl1, bc_h, bc_l),
+                vbslq_u8(fl1, bd_h, bc_h)
+    };
 }
 
 
@@ -446,10 +446,10 @@ void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_
             const block_ifairy_1x3 *w_blk_base = w_base + blk;
             const lut_block *lut_blk_base = lut + blk;
 
-            int16x8x2_t block_dst_00 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
-            int16x8x2_t block_dst_01 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
-            int16x8x2_t block_dst_10 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
-            int16x8x2_t block_dst_11 = {{vdupq_n_s16(0), vdupq_n_s16(0)}};
+            int16x8x2_t block_dst_00 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
+            int16x8x2_t block_dst_01 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
+            int16x8x2_t block_dst_10 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
+            int16x8x2_t block_dst_11 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
             
             #pragma unroll
             for (int i = 0; i < in_blk_n; i++) {
@@ -473,19 +473,48 @@ void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_
             const float *wr = w[w_row * blk_n + blk].d_real;
             const float *wi = w[w_row * blk_n + blk].d_imag;
             float *idst = dst + row * 2;
-            for (int j = 0; j <= (row_end - row < 7 ? row_end - row : 7); j++) {
-                float _wr = wr[j], _wi = wi[j];
-                idst[j*2  ] += (float)block_dst_00.val[0][j] * (lr * _wr) + (float)block_dst_11.val[0][j] * (li * _wi);
-                idst[j*2+1] += (float)block_dst_01.val[0][j] * (lr * _wi) + (float)block_dst_10.val[0][j] * (li * _wr);
-            }
-            if (row_end - row >= 8) {
-                for (int j = 8; j <= (row_end - row < 15 ? row_end - row : 15); j++) {
+
+            #if defined(__M__ALIGNED_16)
+                for (int j = 0; j < 8; j++) {
+                    float _wr = wr[j], _wi = wi[j];
+                    idst[j*2  ] += (float)block_dst_00.val[0][j] * (lr * _wr) + (float)block_dst_11.val[0][j] * (li * _wi);
+                    idst[j*2+1] += (float)block_dst_01.val[0][j] * (lr * _wi) + (float)block_dst_10.val[0][j] * (li * _wr);
+                }
+                for (int j = 8; j < 16; j++) {
                     int jj = j - 8;
                     float _wr = wr[j], _wi = wi[j];
                     idst[j*2  ] += (float)block_dst_00.val[1][jj] * (lr * _wr) + (float)block_dst_11.val[1][jj] * (li * _wi);
                     idst[j*2+1] += (float)block_dst_01.val[1][jj] * (lr * _wi) + (float)block_dst_10.val[1][jj] * (li * _wr);
                 }
-            }
+            #elif defined(__M__ALIGNED_8)
+                for (int j = 0; j < 8; j++) {
+                    float _wr = wr[j], _wi = wi[j];
+                    idst[j*2  ] += (float)block_dst_00.val[0][j] * (lr * _wr) + (float)block_dst_11.val[0][j] * (li * _wi);
+                    idst[j*2+1] += (float)block_dst_01.val[0][j] * (lr * _wi) + (float)block_dst_10.val[0][j] * (li * _wr);
+                }
+                if (row_end - row >= 8) {
+                    for (int j = 8; j < 16; j++) {
+                        int jj = j - 8;
+                        float _wr = wr[j], _wi = wi[j];
+                        idst[j*2  ] += (float)block_dst_00.val[1][jj] * (lr * _wr) + (float)block_dst_11.val[1][jj] * (li * _wi);
+                        idst[j*2+1] += (float)block_dst_01.val[1][jj] * (lr * _wi) + (float)block_dst_10.val[1][jj] * (li * _wr);
+                    }
+                }
+            #else
+                for (int j = 0; j <= (row_end - row < 7 ? row_end - row : 7); j++) {
+                    float _wr = wr[j], _wi = wi[j];
+                    idst[j*2  ] += (float)block_dst_00.val[0][j] * (lr * _wr) + (float)block_dst_11.val[0][j] * (li * _wi);
+                    idst[j*2+1] += (float)block_dst_01.val[0][j] * (lr * _wi) + (float)block_dst_10.val[0][j] * (li * _wr);
+                }
+                if (row_end - row >= 8) {
+                    for (int j = 8; j <= (row_end - row < 15 ? row_end - row : 15); j++) {
+                        int jj = j - 8;
+                        float _wr = wr[j], _wi = wi[j];
+                        idst[j*2  ] += (float)block_dst_00.val[1][jj] * (lr * _wr) + (float)block_dst_11.val[1][jj] * (li * _wi);
+                        idst[j*2+1] += (float)block_dst_01.val[1][jj] * (lr * _wi) + (float)block_dst_10.val[1][jj] * (li * _wr);
+                    }
+                }
+            #endif
         }
     }
 }
@@ -631,19 +660,19 @@ void generate_lut_q16_old(int k, const float *act, int16_t *lut, float *lut_scal
         for (int i = act_begin; i <= act_end; i += 6) {
             int16_t r0, r1, r2, i0, i1, i2;
             if (i+6 > act_end) {
-                r0 = (int16_t)roundf(act[i]    * inv_scale_real);
-                i0 = (int16_t)roundf(-act[i+1] * inv_scale_imag);
+                r0 = (int16_t)roundf(act[i]   * inv_scale_real);
+                i0 = (int16_t)roundf(act[i+1] * inv_scale_imag);
                 r1 = 0;
                 i1 = 0;
                 r2 = 0;
                 i2 = 0;
             } else {
-                r0 = (int16_t)roundf(act[i]    * inv_scale_real);
-                i0 = (int16_t)roundf(-act[i+1] * inv_scale_imag);
-                r1 = (int16_t)roundf(act[i+2]  * inv_scale_real);
-                i1 = (int16_t)roundf(-act[i+3] * inv_scale_imag);
-                r2 = (int16_t)roundf(act[i+4]  * inv_scale_real);
-                i2 = (int16_t)roundf(-act[i+5] * inv_scale_imag);
+                r0 = (int16_t)roundf(act[i]   * inv_scale_real);
+                i0 = (int16_t)roundf(act[i+1] * inv_scale_imag);
+                r1 = (int16_t)roundf(act[i+2] * inv_scale_real);
+                i1 = (int16_t)roundf(act[i+3] * inv_scale_imag);
+                r2 = (int16_t)roundf(act[i+4] * inv_scale_real);
+                i2 = (int16_t)roundf(act[i+5] * inv_scale_imag);
             }
 
             for (int _i = 0; _i < 4; _i++) {
@@ -724,17 +753,17 @@ void mul_mat_mxk_kx1_with_lut_q16_old(int k, int row_begin, int row_end, const b
     for (int row = row_begin; row <= row_end; row++) {
         const int w_base = row*blk_n;
         for (int blk = 0; blk < blk_n; blk++) {
-            int32x4_t tmp = vdupq_n_s32(0);
+            int32x4_t isum = vdupq_n_s32(0);
             const int16_t *lut_base = lut + (blk*in_blk_n)*next_lut_blk;
             #pragma unroll
             for (int i = 0; i < in_blk_n; i++) {
                 const uint8_t iweight_16x3 = w[w_base+blk].qs[i];
                 int16x4_t abcd = vld1_s16(lut_base+next_lut_blk*i+iweight_16x3*lut_blk_n);
-                tmp = vaddw_s16(tmp, abcd);
+                isum = vaddw_s16(isum, abcd);
             }
             // 反量化，写回
-            dst[(row)*2  ] += (float)(tmp[0]) * lut_scale[blk*2] * w[(row)*blk_n+blk].d_real - (float)(tmp[1]) * lut_scale[blk*2+1] * w[(row)*blk_n+blk].d_imag;
-            dst[(row)*2+1] += (float)(tmp[2]) * lut_scale[blk*2] * w[(row)*blk_n+blk].d_imag + (float)(tmp[3]) * lut_scale[blk*2+1] * w[(row)*blk_n+blk].d_real;
+            dst[(row)*2  ] += (float)(isum[0]) * lut_scale[blk*2] * w[(row)*blk_n+blk].d_real + (float)(isum[1]) * lut_scale[blk*2+1] * w[(row)*blk_n+blk].d_imag;
+            dst[(row)*2+1] += (float)(isum[2]) * lut_scale[blk*2] * w[(row)*blk_n+blk].d_imag - (float)(isum[3]) * lut_scale[blk*2+1] * w[(row)*blk_n+blk].d_real;
         }
     }
 }
