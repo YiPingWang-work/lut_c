@@ -473,24 +473,116 @@ void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_
             const float *_wi = w[_w_row * _blk_n + _blk].d_imag;
             float *_idst = dst + _row * 2;
 
-            #if defined(__M__ALIGNED_16)
-                for (int _j = 0; _j < 8; _j++) {
-                    float __wr = _wr[_j], __wi = _wi[_j];
-                    _idst[_j*2  ] += (float)_block_dst_00.val[0][_j] * (_lr * __wr) + (float)_block_dst_11.val[0][_j] * (_li * __wi);
-                    _idst[_j*2+1] += (float)_block_dst_01.val[0][_j] * (_lr * __wi) + (float)_block_dst_10.val[0][_j] * (_li * __wr);
-                }
-                for (int _j = 8; _j < 16; _j++) {
-                    int _jj = _j - 8;
-                    float __wr = _wr[_j], __wi = _wi[_j];
-                    _idst[_j*2  ] += (float)_block_dst_00.val[1][_jj] * (_lr * __wr) + (float)_block_dst_11.val[1][_jj] * (_li * __wi);
-                    _idst[_j*2+1] += (float)_block_dst_01.val[1][_jj] * (_lr * __wi) + (float)_block_dst_10.val[1][_jj] * (_li * __wr);
-                }
-            #elif defined(__M__ALIGNED_8)
-                for (int _j = 0; _j < 8; _j++) {
-                    float __wr = _wr[_j], __wi = _wi[_j];
-                    _idst[_j*2  ] += (float)_block_dst_00.val[0][_j] * (_lr * __wr) + (float)_block_dst_11.val[0][_j] * (_li * __wi);
-                    _idst[_j*2+1] += (float)_block_dst_01.val[0][_j] * (_lr * __wi) + (float)_block_dst_10.val[0][_j] * (_li * __wr);
-                }
+#if defined(__M__ALIGNED_16)
+                // 加载缩放因子到向量寄存器
+                float32x4_t _vlr = vdupq_n_f32(_lr);
+                float32x4_t _vli = vdupq_n_f32(_li);
+                
+                // 处理前8个元素
+                float32x4_t _vwr_lo = vld1q_f32(_wr);
+                float32x4_t _vwr_hi = vld1q_f32(_wr + 4);
+                float32x4_t _vwi_lo = vld1q_f32(_wi);
+                float32x4_t _vwi_hi = vld1q_f32(_wi + 4);
+                
+                float32x4_t _vdst00_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_00.val[0])));
+                float32x4_t _vdst00_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_00.val[0])));
+                float32x4_t _vdst01_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_01.val[0])));
+                float32x4_t _vdst01_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_01.val[0])));
+                float32x4_t _vdst10_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_10.val[0])));
+                float32x4_t _vdst10_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_10.val[0])));
+                float32x4_t _vdst11_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_11.val[0])));
+                float32x4_t _vdst11_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_11.val[0])));
+                
+                float32x4_t _vreal_lo = vmlaq_f32(vmulq_f32(_vdst00_lo, vmulq_f32(_vlr, _vwr_lo)), _vdst11_lo, vmulq_f32(_vli, _vwi_lo));
+                float32x4_t _vreal_hi = vmlaq_f32(vmulq_f32(_vdst00_hi, vmulq_f32(_vlr, _vwr_hi)), _vdst11_hi, vmulq_f32(_vli, _vwi_hi));
+                float32x4_t _vimag_lo = vmlaq_f32(vmulq_f32(_vdst01_lo, vmulq_f32(_vlr, _vwi_lo)), _vdst10_lo, vmulq_f32(_vli, _vwr_lo));
+                float32x4_t _vimag_hi = vmlaq_f32(vmulq_f32(_vdst01_hi, vmulq_f32(_vlr, _vwi_hi)), _vdst10_hi, vmulq_f32(_vli, _vwr_hi));
+                
+                float32x4x2_t _vout_lo = {_vreal_lo, _vimag_lo};
+                float32x4x2_t _vout_hi = {_vreal_hi, _vimag_hi};
+                
+                float32x4x2_t _vold_lo = vld2q_f32(_idst);
+                float32x4x2_t _vold_hi = vld2q_f32(_idst + 8);
+                _vout_lo.val[0] = vaddq_f32(_vout_lo.val[0], _vold_lo.val[0]);
+                _vout_lo.val[1] = vaddq_f32(_vout_lo.val[1], _vold_lo.val[1]);
+                _vout_hi.val[0] = vaddq_f32(_vout_hi.val[0], _vold_hi.val[0]);
+                _vout_hi.val[1] = vaddq_f32(_vout_hi.val[1], _vold_hi.val[1]);
+                
+                vst2q_f32(_idst, _vout_lo);
+                vst2q_f32(_idst + 8, _vout_hi);
+                
+                
+                // 处理后8个元素
+                _vwr_lo = vld1q_f32(_wr + 8);
+                _vwr_hi = vld1q_f32(_wr + 12);
+                _vwi_lo = vld1q_f32(_wi + 8);
+                _vwi_hi = vld1q_f32(_wi + 12);
+                
+                _vdst00_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_00.val[1])));
+                _vdst00_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_00.val[1])));
+                _vdst01_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_01.val[1])));
+                _vdst01_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_01.val[1])));
+                _vdst10_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_10.val[1])));
+                _vdst10_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_10.val[1])));
+                _vdst11_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_11.val[1])));
+                _vdst11_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_11.val[1])));
+                
+                _vreal_lo = vmlaq_f32(vmulq_f32(_vdst00_lo, vmulq_f32(_vlr, _vwr_lo)), _vdst11_lo, vmulq_f32(_vli, _vwi_lo));
+                _vreal_hi = vmlaq_f32(vmulq_f32(_vdst00_hi, vmulq_f32(_vlr, _vwr_hi)), _vdst11_hi, vmulq_f32(_vli, _vwi_hi));
+                _vimag_lo = vmlaq_f32(vmulq_f32(_vdst01_lo, vmulq_f32(_vlr, _vwi_lo)), _vdst10_lo, vmulq_f32(_vli, _vwr_lo));
+                _vimag_hi = vmlaq_f32(vmulq_f32(_vdst01_hi, vmulq_f32(_vlr, _vwi_hi)), _vdst10_hi, vmulq_f32(_vli, _vwr_hi));
+                
+                _vout_lo = (float32x4x2_t){_vreal_lo, _vimag_lo};
+                _vout_hi = (float32x4x2_t){_vreal_hi, _vimag_hi};
+                
+                _vold_lo = vld2q_f32(_idst + 16);
+                _vold_hi = vld2q_f32(_idst + 24);
+                _vout_lo.val[0] = vaddq_f32(_vout_lo.val[0], _vold_lo.val[0]);
+                _vout_lo.val[1] = vaddq_f32(_vout_lo.val[1], _vold_lo.val[1]);
+                _vout_hi.val[0] = vaddq_f32(_vout_hi.val[0], _vold_hi.val[0]);
+                _vout_hi.val[1] = vaddq_f32(_vout_hi.val[1], _vold_hi.val[1]);
+                
+                vst2q_f32(_idst + 16, _vout_lo);
+                vst2q_f32(_idst + 24, _vout_hi);
+                
+#elif defined(__M__ALIGNED_8)
+                // 加载缩放因子到向量寄存器
+                float32x4_t _vlr = vdupq_n_f32(_lr);
+                float32x4_t _vli = vdupq_n_f32(_li);
+                
+                // 处理前8个元素
+                float32x4_t _vwr_lo = vld1q_f32(_wr);
+                float32x4_t _vwr_hi = vld1q_f32(_wr + 4);
+                float32x4_t _vwi_lo = vld1q_f32(_wi);
+                float32x4_t _vwi_hi = vld1q_f32(_wi + 4);
+                
+                float32x4_t _vdst00_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_00.val[0])));
+                float32x4_t _vdst00_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_00.val[0])));
+                float32x4_t _vdst01_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_01.val[0])));
+                float32x4_t _vdst01_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_01.val[0])));
+                float32x4_t _vdst10_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_10.val[0])));
+                float32x4_t _vdst10_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_10.val[0])));
+                float32x4_t _vdst11_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_11.val[0])));
+                float32x4_t _vdst11_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_11.val[0])));
+                
+                float32x4_t _vreal_lo = vmlaq_f32(vmulq_f32(_vdst00_lo, vmulq_f32(_vlr, _vwr_lo)), _vdst11_lo, vmulq_f32(_vli, _vwi_lo));
+                float32x4_t _vreal_hi = vmlaq_f32(vmulq_f32(_vdst00_hi, vmulq_f32(_vlr, _vwr_hi)), _vdst11_hi, vmulq_f32(_vli, _vwi_hi));
+                float32x4_t _vimag_lo = vmlaq_f32(vmulq_f32(_vdst01_lo, vmulq_f32(_vlr, _vwi_lo)), _vdst10_lo, vmulq_f32(_vli, _vwr_lo));
+                float32x4_t _vimag_hi = vmlaq_f32(vmulq_f32(_vdst01_hi, vmulq_f32(_vlr, _vwi_hi)), _vdst10_hi, vmulq_f32(_vli, _vwr_hi));
+                
+                float32x4x2_t _vout_lo = {_vreal_lo, _vimag_lo};
+                float32x4x2_t _vout_hi = {_vreal_hi, _vimag_hi};
+                
+                float32x4x2_t _vold_lo = vld2q_f32(_idst);
+                float32x4x2_t _vold_hi = vld2q_f32(_idst + 8);
+                _vout_lo.val[0] = vaddq_f32(_vout_lo.val[0], _vold_lo.val[0]);
+                _vout_lo.val[1] = vaddq_f32(_vout_lo.val[1], _vold_lo.val[1]);
+                _vout_hi.val[0] = vaddq_f32(_vout_hi.val[0], _vold_hi.val[0]);
+                _vout_hi.val[1] = vaddq_f32(_vout_hi.val[1], _vold_hi.val[1]);
+                
+                vst2q_f32(_idst, _vout_lo);
+                vst2q_f32(_idst + 8, _vout_hi);
+
                 if (row_end - _row >= 8) {
                     for (int _j = 8; _j < 16; _j++) {
                         int _jj = _j - 8;
@@ -499,7 +591,7 @@ void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_
                         _idst[_j*2+1] += (float)_block_dst_01.val[1][_jj] * (_lr * __wi) + (float)_block_dst_10.val[1][_jj] * (_li * __wr);
                     }
                 }
-            #else
+#else
                 for (int _j = 0; _j <= (row_end - _row < 7 ? row_end - _row : 7); _j++) {
                     float __wr = _wr[_j], __wi = _wi[_j];
                     _idst[_j*2  ] += (float)_block_dst_00.val[0][_j] * (_lr * __wr) + (float)_block_dst_11.val[0][_j] * (_li * __wi);
@@ -513,7 +605,7 @@ void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_
                         _idst[_j*2+1] += (float)_block_dst_01.val[1][_jj] * (_lr * __wi) + (float)_block_dst_10.val[1][_jj] * (_li * __wr);
                     }
                 }
-            #endif
+#endif
         }
     }
 }

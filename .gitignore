@@ -1,6 +1,8 @@
 output/
 main.dSYM/
+main_tmp.dSYM/
 main
+main_tmp
 *.prof
 test_data/act.txt
 test_data/lut.txt
