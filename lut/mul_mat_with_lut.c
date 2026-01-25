@@ -31,6 +31,8 @@ void act_float_2_block_ifairy_q16(int k, const float *act_float, block_ifairy_q1
 }
 
 
+
+// ================================ 16路LUT ================================
 static const uint8_t three_vals2index_uint8[64] = {
     // -1 * *
     0b000000, // (-1, -1, -1)
@@ -753,7 +755,7 @@ void free_w(block_ifairy_1x3 *w) {
 
 
 
-// ================================ 验证乘法程序 ================================
+// ================================ 乘法程序 ================================
 static inline float32x2_t mul_mat_block_1x4_4x1(uint8_t a, float32_t *b, float32_t d_real, float32_t d_imag) __attribute__((always_inline));
 static inline float32x2_t mul_mat_block_1x4_4x1(uint8_t a, float32_t *b, float32_t d_real, float32_t d_imag) {
     float32_t _acc_r = 0;
@@ -814,10 +816,11 @@ void mul_mat_mxk_kx1(int k, int row_begin, int row_end, const block_ifairy *w, c
 
 
 
-// ================================ 原程序测试 ================================
-
+// ================================ 1路LUT ================================
 static const int8_t sx[4] = { -1,  1,  0,  0 };
 static const int8_t sy[4] = {  0,  0, -1,  1 };
+
+
 void generate_lut_q16_block_ifairy_q16_old(int k, const block_ifairy_q16 *act, int16_t *lut_v, float *lut_scale) {
     int _block_n = (k+QK_K-1)/QK_K;
     int _ii = 0;

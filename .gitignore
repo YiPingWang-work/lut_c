@@ -1,6 +1,5 @@
 output/
-main.dSYM/
-main_tmp.dSYM/
+*.dSYM/
 main
 main_tmp
 *.prof
