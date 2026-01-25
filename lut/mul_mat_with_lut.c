@@ -245,23 +245,17 @@ void generate_lut_q8_block_ifairy_q16(int k, const block_ifairy_q16 *act, lut_bl
     for (int _blk = 0; _blk < _blk_n; _blk++) {
         lut[_blk].d_real = act[_blk].d_real;
         lut[_blk].d_imag = act[_blk].d_imag;
-        for (int _i = 0; _i < QK_K; _i+=3) {
-            int8_t _r0, _i0, _r1, _i1, _r2, _i2;
-            if (_i+3 >= QK_K) {
-                _r0 = (int8_t) act[_blk].x_real[_i  ];
-                _i0 = (int8_t)-act[_blk].x_imag[_i  ];
-                _r1 = (int8_t) 0;
-                _i1 = (int8_t) 0;
-                _r2 = (int8_t) 0;
-                _i2 = (int8_t) 0;
-            } else {
-                _r0 = (int8_t) act[_blk].x_real[_i  ];
-                _i0 = (int8_t)-act[_blk].x_imag[_i  ];
-                _r1 = (int8_t) act[_blk].x_real[_i+1];
-                _i1 = (int8_t)-act[_blk].x_imag[_i+1];
-                _r2 = (int8_t) act[_blk].x_real[_i+2];
-                _i2 = (int8_t)-act[_blk].x_imag[_i+2];
-            } 
+        int8_t _r0, _i0, _r1, _i1, _r2, _i2;
+        int _i = 0;
+        for (; _i+3 < QK_K; _i+=3) {
+            
+            _r0 = (int8_t) act[_blk].x_real[_i  ];
+            _i0 = (int8_t)-act[_blk].x_imag[_i  ];
+            _r1 = (int8_t) act[_blk].x_real[_i+1];
+            _i1 = (int8_t)-act[_blk].x_imag[_i+1];
+            _r2 = (int8_t) act[_blk].x_real[_i+2];
+            _i2 = (int8_t)-act[_blk].x_imag[_i+2];
+            
 
             int8x16_t _ac = {
                 -_r0 - _r1 - _r2,
@@ -353,6 +347,104 @@ void generate_lut_q8_block_ifairy_q16(int k, const block_ifairy_q16 *act, lut_bl
 
             lut[_blk].v[_i/3] = (int8x16x4_t){.val= _ac, _bd, _ad, _bc};
         }
+        
+        // 处理剩余部分
+        _r0 = (int8_t) act[_blk].x_real[_i  ];
+        _i0 = (int8_t)-act[_blk].x_imag[_i  ];
+        _r1 = (int8_t) 0;
+        _i1 = (int8_t) 0;
+        _r2 = (int8_t) 0;
+        _i2 = (int8_t) 0;
+
+        int8x16_t _ac = {
+            -_r0 - _r1 - _r2,
+            -_r0 - _r1 + _r2,
+            -_r0 - _r1,
+            -_r0 - _r1,
+
+            -_r0 + _r1 - _r2,
+            -_r0 + _r1 + _r2,
+            -_r0 + _r1,
+            -_r0 + _r1,
+
+            -_r0 - _r2,
+            -_r0 + _r2,
+            -_r0,
+            -_r0,
+
+            -_r0 - _r2,
+            -_r0 + _r2,
+            -_r0,
+            -_r0,
+        };
+
+        int8x16_t _bd = {
+            0,
+            0,
+            -_i2,
+            _i2,
+
+            0,
+            0,
+            -_i2,
+            _i2,
+
+            -_i1,
+            -_i1,
+            -_i1 - _i2,
+            -_i1 + _i2,
+
+            _i1,
+            _i1,
+            _i1 - _i2,
+            _i1 + _i2,
+        };
+
+        int8x16_t _ad = {
+            0,
+            0,
+            -_r2,
+            _r2,
+
+            0,
+            0,
+            -_r2,
+            _r2,
+
+            -_r1,
+            -_r1,
+            -_r1 - _r2,
+            -_r1 + _r2,
+
+            _r1,
+            _r1,
+            _r1 - _r2,
+            _r1 + _r2,
+        };
+        
+        int8x16_t _bc = {
+            -_i0 - _i1 - _i2,
+            -_i0 - _i1 + _i2,
+            -_i0 - _i1,
+            -_i0 - _i1,
+
+            -_i0 + _i1 - _i2,
+            -_i0 + _i1 + _i2,
+            -_i0 + _i1,
+            -_i0 + _i1,
+
+            -_i0 - _i2,
+            -_i0 + _i2,
+            -_i0,
+            -_i0,
+
+            -_i0 - _i2,
+            -_i0 + _i2,
+            -_i0,
+            -_i0,
+        };
+
+        lut[_blk].v[_i/3] = (int8x16x4_t){.val= _ac, _bd, _ad, _bc};
     }
 }
 
