@@ -14,7 +14,7 @@ int K = 8192;
 static inline uint64_t now_ns(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ull + ts.tv_nsec;
+    return ((uint64_t)ts.tv_sec * 1000000000ull + ts.tv_nsec)/1000;
 }
 
 static inline float rand_float() {
@@ -143,38 +143,45 @@ void compare(const block_ifairy *w, const float *act) {
     long long t0 = now_ns();
     mul_mat_mxk_kx1(K, 0, M-1, w, act, dst1);
     long long t1 = now_ns();
-    printf("直接计算,  耗时: %lld ns\n", (t1 - t0));
-
-    // 16路查表
+    printf("直接计算,  耗时: %lld us\n", (t1 - t0));
+    
     block_ifairy_q16 *act_block = alloc_act_block_ifairy_q16(K);
+    // 16路查表
+    act_float_2_block_ifairy_q16(K, act, act_block, 42.6f);
     lut_block *lut = alloc_lut_q8(K);
     block_ifairy_1x3 *_w = alloc_w(M, K);
-    transpose(M, K, w, _w);
-    // generate_lut_q8(K, act, lut);
-    act_float_2_block_ifairy_q16(K, act, act_block);
-    generate_lut_q8_block_ifairy_q16(K, act_block, lut);
     t0 = now_ns();
-    mul_mat_mxk_kx1_with_lut_q8(K, 0, M-1, _w, lut, dst2);
+    transpose(M, K, w, _w);
     t1 = now_ns();
-    printf("查表计算1, 耗时: %lld ns\n", (t1 - t0));
+    printf("转置权重, 耗时: %f us\n", (float)(t1 - t0)/K);
+    t0 = now_ns();
+    generate_lut_q8_block_ifairy_q16(K, act_block, lut);
+    t1 = now_ns();
+    mul_mat_mxk_kx1_with_lut_q8(K, 0, M-1, _w, lut, dst2);
+    long long t2 = now_ns();
+    printf("查表计算1, 耗时: %lld us, 生成LUT耗时: %lld us\n", (t2 - t1), (t1 - t0));
     free_lut_q8(lut);
     free_w(_w);
-    free_act_block_ifairy_q16(act_block);
+    
 
     // 1路查表
+    act_float_2_block_ifairy_q16(K, act, act_block, 127.0f);
     int16_t *lut_v_old = alloc_lut_v_q16_old(K);
     float *lut_scale_old = alloc_lut_scale_old(K);
     block_ifairy_1x3_old *_w_old = alloc_w_old(M, K);
     transpose_old(M, K, w, _w_old);
-    generate_lut_q16_old(K, act, lut_v_old, lut_scale_old);
     t0 = now_ns();
-    mul_mat_mxk_kx1_with_lut_q16_old(K, 0, M-1, _w_old, lut_v_old, lut_scale_old, dst3);
+    generate_lut_q16_block_ifairy_q16_old(K, act_block, lut_v_old, lut_scale_old);
     t1 = now_ns();
-    printf("查表计算2, 耗时: %lld ns\n", (t1 - t0));
+    mul_mat_mxk_kx1_with_lut_q16_old(K, 0, M-1, _w_old, lut_v_old, lut_scale_old, dst3);
+    t2 = now_ns();
+    printf("查表计算2, 耗时: %lld us, 生成LUT耗时: %lld us\n", (t2 - t1), (t1 - t0));
+    
+    
     free_lut_v_q16_old(lut_v_old);
     free_lut_scale_old(lut_scale_old);
     free_w_old(_w_old);
-
+    free_act_block_ifairy_q16(act_block);
 
 
     int errors = 0;

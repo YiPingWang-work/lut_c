@@ -46,8 +46,11 @@ typedef struct __attribute__((aligned(128))) {
     float d_real, d_imag;
 } block_ifairy_q16;
 
+void act_float_2_block_ifairy_q16(int k, const float *act_float, block_ifairy_q16 *act_q16, float scale);
+
+
+// === 16路lut优化
 void generate_lut_q8(int k, const float *act, lut_block *lut);
-void act_float_2_block_ifairy_q16(int k, const float *act_float, block_ifairy_q16 *act_q16);
 void generate_lut_q8_block_ifairy_q16(int k, const block_ifairy_q16 *act, lut_block *lut);
 void transpose(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3 *w);
 void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst);
@@ -61,7 +64,7 @@ void free_lut_q8(lut_block *lut);
 void free_w(block_ifairy_1x3 *w);
 
 // === 原程序测试
-void generate_lut_q16_old(int k, const float *act, int16_t *lut, float *lut_scale);
+void generate_lut_q16_block_ifairy_q16_old(int k, const block_ifairy_q16 *act, int16_t *lut_v, float *lut_scale);
 void transpose_old(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3_old *w); 
 void mul_mat_mxk_kx1_with_lut_q16_old(int k, int row_begin, int row_end, const block_ifairy_1x3_old *w, const int16_t *lut, const float *lut_scale, float *dst);
 int16_t *alloc_lut_v_q16_old(int k);
