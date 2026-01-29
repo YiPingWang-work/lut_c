@@ -133,10 +133,13 @@ void compare(const block_ifairy *w, const float *act) {
     float *dst1 = calloc(M*2, sizeof(float));
     float *dst2 = calloc(M*2, sizeof(float));
     float *dst3 = calloc(M*2, sizeof(float));
+    float *dst4 = calloc(M*2, sizeof(float));
 
     for(int i = 0; i < M*2; i++) {
         dst1[i] = 0.0f;
         dst2[i] = 0.0f;
+        dst3[i] = 0.0f;
+        dst4[i] = 0.0f;
     }
 
     // 验证程序
@@ -145,6 +148,7 @@ void compare(const block_ifairy *w, const float *act) {
     long long t1 = now_ns();
     printf("直接计算,  耗时: %lld us\n", (t1 - t0));
     
+
     block_ifairy_q16 *act_block = alloc_act_block_ifairy_q16(K);
     // 16路查表
     act_float_2_block_ifairy_q16(K, act, act_block, 42.6f);
@@ -161,8 +165,27 @@ void compare(const block_ifairy *w, const float *act) {
     long long t2 = now_ns();
     printf("查表计算1, 耗时: %lld us, 生成LUT耗时: %lld us\n", (t2 - t1), (t1 - t0));
     free_lut_q8(lut);
-    free_w(_w);
     
+
+    // 16路查表lut_v lut_scale分离
+    int8_t *lut_v = alloc_lut_v_q8(K);
+    float *lut_scale = alloc_lut_scale_q8(K);
+    uint8_t *_w_tmp = alloc_w_tmp(M, K);
+    float *_w_scale_real = alloc_w_scale_real_tmp(M, K);
+    float *_w_scale_imag = alloc_w_scale_imag_tmp(M, K);
+    transpose_tmp(M, K, w, _w_tmp, _w_scale_real, _w_scale_imag);
+    t0 = now_ns();
+    generate_lut_q8_block_ifairy_q16_tmp(K, act_block, lut_v, lut_scale);
+    t1 = now_ns();
+    mul_mat_mxk_kx1_with_lut_q8_tmp(K, 0, M-1, _w_tmp, _w_scale_real, _w_scale_imag, lut_v, lut_scale, dst4);
+    t2 = now_ns();
+    printf("查表计算1_tmp, 耗时: %lld us, 生成LUT耗时: %lld us\n", (t2 - t1), (t1 - t0));
+    free_lut_v_q8_tmp(lut_v);
+    free_lut_scale_q8_tmp(lut_scale);
+    free_w_tmp(_w_tmp);
+    free_w_scale_real_tmp(_w_scale_real);
+    free_w_scale_imag_tmp(_w_scale_imag);
+
 
     // 1路查表
     act_float_2_block_ifairy_q16(K, act, act_block, 127.0f);
@@ -199,6 +222,22 @@ void compare(const block_ifairy *w, const float *act) {
         }
     }
     printf("查表计算1: 0.1 accuracy: %f, max_mismatch: %f\n", ((float)M*2 - (float)errors)/((float)M*2), max_mismatch);
+
+    errors = 0;
+    max_mismatch = 0.0f;
+    for (int i = 0; i < M*2; i++) {
+        float mismatch = fabsf(dst1[i] - dst4[i])/(fabsf(dst1[i])+1e-9);
+        if (mismatch > 0.1) {
+            // printf("❌ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst4[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst4[i]);
+            if (mismatch > max_mismatch) {
+                max_mismatch = mismatch;
+            }
+            errors++;
+        } else {
+            // printf("✅ %d ==> %f, %f, %f\n", i, fabsf(dst1[i] - dst4[i])/(fabsf(dst1[i])+1e-9), dst1[i], dst4[i]);
+        }
+    }
+    printf("查表计算1_tmp: 0.1 accuracy: %f, max_mismatch: %f\n", ((float)M*2 - (float)errors)/((float)M*2), max_mismatch);
     
     errors = 0;
     max_mismatch = 0.0f;
@@ -220,6 +259,7 @@ void compare(const block_ifairy *w, const float *act) {
     free(dst1);
     free(dst2);
     free(dst3);
+    free(dst4);
 }
 
 void sample(const block_ifairy *w, const float *act) {
