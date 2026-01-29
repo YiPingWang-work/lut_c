@@ -451,6 +451,229 @@ void generate_lut_q8_block_ifairy_q16(int k, const block_ifairy_q16 *act, lut_bl
 }
 
 
+void generate_lut_q8_block_ifairy_q16_v7(int k, const block_ifairy_q16 *act, lut_block_v7 *lut) {
+    const int _blk_n = (k+QK_K-1)/QK_K;
+    for (int _blk = 0; _blk < _blk_n; _blk++) {
+        lut[_blk].d_real = act[_blk].d_real;
+        lut[_blk].d_imag = act[_blk].d_imag;
+        int8_t _r0, _i0, _r1, _i1, _r2, _i2;
+        int _i = 0;
+        for (; _i+3 < QK_K; _i+=3) {
+            
+            _r0 = (int8_t) act[_blk].x_real[_i  ];
+            _i0 = (int8_t)-act[_blk].x_imag[_i  ];
+            _r1 = (int8_t) act[_blk].x_real[_i+1];
+            _i1 = (int8_t)-act[_blk].x_imag[_i+1];
+            _r2 = (int8_t) act[_blk].x_real[_i+2];
+            _i2 = (int8_t)-act[_blk].x_imag[_i+2];
+            
+
+            int8x8x2_t _ac = {
+                (int8x8_t){
+                    -_r0 - _r1 - _r2,
+                    -_r0 - _r1 + _r2,
+                    -_r0 - _r1,
+                    -_r0 - _r1,
+                    -_r0 + _r1 - _r2,
+                    -_r0 + _r1 + _r2,
+                    -_r0 + _r1,
+                    -_r0 + _r1,
+                },
+                (int8x8_t){
+                    -_r0 - _r2,
+                    -_r0 + _r2,
+                    -_r0,
+                    -_r0,
+                    -_r0 - _r2,
+                    -_r0 + _r2,
+                    -_r0,
+                    -_r0,
+                }
+            };
+
+            int8x8x2_t _bd = {
+                (int8x8_t){
+                    0,
+                    0,
+                    -_i2,
+                    _i2,
+                    0,
+                    0,
+                    -_i2,
+                    _i2,
+                },
+                (int8x8_t){
+                    -_i1,
+                    -_i1,
+                    -_i1 - _i2,
+                    -_i1 + _i2,
+                    _i1,
+                    _i1,
+                    _i1 - _i2,
+                    _i1 + _i2,
+                }
+            };
+
+            int8x8x2_t _ad = {
+                (int8x8_t){
+                    0,
+                    0,
+                    -_r2,
+                    _r2,
+                    0,
+                    0,
+                    -_r2,
+                    _r2,
+                },
+                (int8x8_t){
+                    -_r1,
+                    -_r1,
+                    -_r1 - _r2,
+                    -_r1 + _r2,
+                    _r1,
+                    _r1,
+                    _r1 - _r2,
+                    _r1 + _r2,
+                }
+            };
+            
+            int8x8x2_t _bc = {
+                (int8x8_t){
+                    -_i0 - _i1 - _i2,
+                    -_i0 - _i1 + _i2,
+                    -_i0 - _i1,
+                    -_i0 - _i1,
+                    -_i0 + _i1 - _i2,
+                    -_i0 + _i1 + _i2,
+                    -_i0 + _i1,
+                    -_i0 + _i1,
+                },
+                (int8x8_t){
+                    -_i0 - _i2,
+                    -_i0 + _i2,
+                    -_i0,
+                    -_i0,
+                    -_i0 - _i2,
+                    -_i0 + _i2,
+                    -_i0,
+                    -_i0,
+                }
+            };
+
+            lut[_blk].v[_i/3][0] = _ac;
+            lut[_blk].v[_i/3][1] = _bd;;
+            lut[_blk].v[_i/3][2] = _ad;
+            lut[_blk].v[_i/3][3] = _bc;
+        }
+        
+        // 处理剩余部分
+        _r0 = (int8_t) act[_blk].x_real[_i  ];
+        _i0 = (int8_t)-act[_blk].x_imag[_i  ];
+        _r1 = (int8_t) 0;
+        _i1 = (int8_t) 0;
+        _r2 = (int8_t) 0;
+        _i2 = (int8_t) 0;
+
+        int8x8x2_t _ac = {
+                (int8x8_t){
+                    -_r0 - _r1 - _r2,
+                    -_r0 - _r1 + _r2,
+                    -_r0 - _r1,
+                    -_r0 - _r1,
+                    -_r0 + _r1 - _r2,
+                    -_r0 + _r1 + _r2,
+                    -_r0 + _r1,
+                    -_r0 + _r1,
+                },
+                (int8x8_t){
+                    -_r0 - _r2,
+                    -_r0 + _r2,
+                    -_r0,
+                    -_r0,
+                    -_r0 - _r2,
+                    -_r0 + _r2,
+                    -_r0,
+                    -_r0,
+                }
+            };
+
+            int8x8x2_t _bd = {
+                (int8x8_t){
+                    0,
+                    0,
+                    -_i2,
+                    _i2,
+                    0,
+                    0,
+                    -_i2,
+                    _i2,
+                },
+                (int8x8_t){
+                    -_i1,
+                    -_i1,
+                    -_i1 - _i2,
+                    -_i1 + _i2,
+                    _i1,
+                    _i1,
+                    _i1 - _i2,
+                    _i1 + _i2,
+                }
+            };
+
+            int8x8x2_t _ad = {
+                (int8x8_t){
+                    0,
+                    0,
+                    -_r2,
+                    _r2,
+                    0,
+                    0,
+                    -_r2,
+                    _r2,
+                },
+                (int8x8_t){
+                    -_r1,
+                    -_r1,
+                    -_r1 - _r2,
+                    -_r1 + _r2,
+                    _r1,
+                    _r1,
+                    _r1 - _r2,
+                    _r1 + _r2,
+                }
+            };
+            
+            int8x8x2_t _bc = {
+                (int8x8_t){
+                    -_i0 - _i1 - _i2,
+                    -_i0 - _i1 + _i2,
+                    -_i0 - _i1,
+                    -_i0 - _i1,
+                    -_i0 + _i1 - _i2,
+                    -_i0 + _i1 + _i2,
+                    -_i0 + _i1,
+                    -_i0 + _i1,
+                },
+                (int8x8_t){
+                    -_i0 - _i2,
+                    -_i0 + _i2,
+                    -_i0,
+                    -_i0,
+                    -_i0 - _i2,
+                    -_i0 + _i2,
+                    -_i0,
+                    -_i0,
+                }
+            };
+
+            lut[_blk].v[_i/3][0] = _ac;
+            lut[_blk].v[_i/3][1] = _bd;;
+            lut[_blk].v[_i/3][2] = _ad;
+            lut[_blk].v[_i/3][3] = _bc;
+    }
+}
+
+
 void transpose(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3 *w) {
     const int _blk_n = (k+QK_K-1)/QK_K;
     const int i_in_blk_n = (QK_K+2)/3;
@@ -518,6 +741,232 @@ void transpose_tmp(int m, int k, const block_ifairy *raw_w, uint8_t *w, float *w
             }
             w_scale_real[((_j/16)*_blk_n + _blk)*16 +(_j%16)] = raw_w[_j*_blk_n + _blk].d_real;
             w_scale_imag[((_j/16)*_blk_n + _blk)*16 +(_j%16)] = raw_w[_j*_blk_n + _blk].d_imag;
+        }
+    }
+}
+
+
+static inline int8x16_t vqtbl1q_s8_v7(const int8x8x2_t tbl, const uint8x16_t index) __attribute__((always_inline));
+static inline int8x16_t vqtbl1q_s8_v7(const int8x8x2_t tbl, const uint8x16_t index) {
+    int8x8_t res_lo = vtbl2_s8(tbl, vget_low_u8(index));
+    int8x8_t res_hi = vtbl2_s8(tbl, vget_high_u8(index));
+    return vcombine_s8(res_lo, res_hi);
+}
+
+
+static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut_v7(uint8x16_t iweight_16x3, const int8x8x2_t ilut[4]) __attribute__((always_inline));
+static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut_v7(uint8x16_t iweight_16x3, const int8x8x2_t ilut[4]) {
+
+    const uint8x16_t _mask_idx = vdupq_n_u8(0b00111111);
+    const uint8x16_t _mask_b6  = vdupq_n_u8(0b01000000);
+    const uint8x16_t _mask_b7  = vdupq_n_u8(0b10000000);
+
+    // index 适配
+    uint8x16_t _index = vandq_u8(iweight_16x3, _mask_idx);
+
+    // 设置标识
+    uint8x16_t _fl0 = vtstq_u8(iweight_16x3, _mask_b6);
+    uint8x16_t _fl1 = vtstq_u8(iweight_16x3, _mask_b7);
+
+    //查询lut
+    int8x16_t _ac_00 = vqtbl1q_s8_v7(ilut[0], _index);   // ad_10
+    int8x16_t _bd_01 = vqtbl1q_s8_v7(ilut[1], _index);   // bc_11
+    int8x16_t _ac_11 = vqtbl1q_s8_v7(ilut[2], _index);   // ad_00
+    int8x16_t _bd_11 = vqtbl1q_s8_v7(ilut[3], _index);   // bc_00
+
+    int8x16_t _ac_01 = vnegq_s8(_ac_00);                 // ad_11
+    int8x16_t _ac_10 = vnegq_s8(_ac_11);                 // ad_01
+    int8x16_t _bd_00 = vnegq_s8(_bd_01);                 // bc_10
+    int8x16_t _bd_10 = vnegq_s8(_bd_11);                 // bc_01
+
+
+    int8x16_t _ac_l = vbslq_u8(_fl0, _ac_01, _ac_00);
+    int8x16_t _ad_l = vbslq_u8(_fl0, _ac_10, _ac_11);
+    int8x16_t _bc_l = vbslq_u8(_fl0, _bd_10, _bd_11);
+    int8x16_t _ac_h = vbslq_u8(_fl0, _ac_11, _ac_10);
+    int8x16_t _bc_h = vbslq_u8(_fl0, _bd_01, _bd_00);
+    int8x16_t _bd_h = vbslq_u8(_fl0, _bd_11, _bd_10);
+
+    return (int8x16x4_t){
+        .val =  vbslq_u8(_fl1, _ac_h, _ac_l),
+                vbslq_u8(_fl1, _ac_l, _ad_l),
+                vbslq_u8(_fl1, _bc_h, _bc_l),
+                vbslq_u8(_fl1, _bd_h, _bc_h)
+    };
+}
+
+
+void mul_mat_mxk_kx1_with_lut_q8_v7(int k, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block_v7 *lut, float *dst) {
+    const int _blk_n = (k+QK_K-1)/QK_K;
+    const int _in_blk_n = (QK_K+2)/3;
+    for (int _row = row_begin; _row <= row_end; _row+=16) {
+        const block_ifairy_1x3 *_w_base = w + (_row >> 4)*_blk_n;
+        for (int _blk = 0; _blk < _blk_n; _blk++) {
+            
+            const block_ifairy_1x3 *_w_blk_base = _w_base + _blk;
+            const lut_block_v7 *_lut_blk_base = lut + _blk;
+
+            int16x8x2_t _block_dst_00 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
+            int16x8x2_t _block_dst_01 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
+            int16x8x2_t _block_dst_10 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
+            int16x8x2_t _block_dst_11 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
+            
+            #pragma unroll
+            for (int _i = 0; _i < _in_blk_n; _i++) {
+                uint8x16_t _iweight_16x3 = vld1q_u8(_w_blk_base -> qs[_i]);
+                int8x16x4_t _iret = mul_mat_block_16x3_3x1_with_lut_v7(_iweight_16x3, _lut_blk_base -> v[_i]);
+
+                _block_dst_00.val[0] = vaddw_s8(_block_dst_00.val[0],  vget_low_s8(_iret.val[0]));
+                _block_dst_00.val[1] = vaddw_s8(_block_dst_00.val[1], vget_high_s8(_iret.val[0]));
+                _block_dst_01.val[0] = vaddw_s8(_block_dst_01.val[0],  vget_low_s8(_iret.val[1]));
+                _block_dst_01.val[1] = vaddw_s8(_block_dst_01.val[1], vget_high_s8(_iret.val[1]));
+                _block_dst_10.val[0] = vaddw_s8(_block_dst_10.val[0],  vget_low_s8(_iret.val[2]));
+                _block_dst_10.val[1] = vaddw_s8(_block_dst_10.val[1], vget_high_s8(_iret.val[2]));
+                _block_dst_11.val[0] = vaddw_s8(_block_dst_11.val[0],  vget_low_s8(_iret.val[3]));
+                _block_dst_11.val[1] = vaddw_s8(_block_dst_11.val[1], vget_high_s8(_iret.val[3]));
+            }
+
+            // 反量化，写回
+            const float _lr = lut[_blk].d_real;
+            const float _li = lut[_blk].d_imag;
+            const int _w_row = _row >> 4;
+            const float *_wr = w[_w_row * _blk_n + _blk].d_real;
+            const float *_wi = w[_w_row * _blk_n + _blk].d_imag;
+            float *_idst = dst + _row * 2;
+
+#if defined(__M__ALIGNED_16)
+                // 加载缩放因子到向量寄存器
+                float32x4_t _vlr = vdupq_n_f32(_lr);
+                float32x4_t _vli = vdupq_n_f32(_li);
+                
+                // 处理前8个元素
+                float32x4_t _vwr_lo = vld1q_f32(_wr);
+                float32x4_t _vwr_hi = vld1q_f32(_wr + 4);
+                float32x4_t _vwi_lo = vld1q_f32(_wi);
+                float32x4_t _vwi_hi = vld1q_f32(_wi + 4);
+                
+                float32x4_t _vdst00_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_00.val[0])));
+                float32x4_t _vdst00_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_00.val[0])));
+                float32x4_t _vdst01_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_01.val[0])));
+                float32x4_t _vdst01_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_01.val[0])));
+                float32x4_t _vdst10_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_10.val[0])));
+                float32x4_t _vdst10_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_10.val[0])));
+                float32x4_t _vdst11_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_11.val[0])));
+                float32x4_t _vdst11_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_11.val[0])));
+                
+                float32x4_t _vreal_lo = vmlaq_f32(vmulq_f32(_vdst00_lo, vmulq_f32(_vlr, _vwr_lo)), _vdst11_lo, vmulq_f32(_vli, _vwi_lo));
+                float32x4_t _vreal_hi = vmlaq_f32(vmulq_f32(_vdst00_hi, vmulq_f32(_vlr, _vwr_hi)), _vdst11_hi, vmulq_f32(_vli, _vwi_hi));
+                float32x4_t _vimag_lo = vmlaq_f32(vmulq_f32(_vdst01_lo, vmulq_f32(_vlr, _vwi_lo)), _vdst10_lo, vmulq_f32(_vli, _vwr_lo));
+                float32x4_t _vimag_hi = vmlaq_f32(vmulq_f32(_vdst01_hi, vmulq_f32(_vlr, _vwi_hi)), _vdst10_hi, vmulq_f32(_vli, _vwr_hi));
+                
+                float32x4x2_t _vout_lo = {_vreal_lo, _vimag_lo};
+                float32x4x2_t _vout_hi = {_vreal_hi, _vimag_hi};
+                
+                float32x4x2_t _vold_lo = vld2q_f32(_idst);
+                float32x4x2_t _vold_hi = vld2q_f32(_idst + 8);
+                _vout_lo.val[0] = vaddq_f32(_vout_lo.val[0], _vold_lo.val[0]);
+                _vout_lo.val[1] = vaddq_f32(_vout_lo.val[1], _vold_lo.val[1]);
+                _vout_hi.val[0] = vaddq_f32(_vout_hi.val[0], _vold_hi.val[0]);
+                _vout_hi.val[1] = vaddq_f32(_vout_hi.val[1], _vold_hi.val[1]);
+                
+                vst2q_f32(_idst, _vout_lo);
+                vst2q_f32(_idst + 8, _vout_hi);
+                
+                
+                // 处理后8个元素
+                _vwr_lo = vld1q_f32(_wr + 8);
+                _vwr_hi = vld1q_f32(_wr + 12);
+                _vwi_lo = vld1q_f32(_wi + 8);
+                _vwi_hi = vld1q_f32(_wi + 12);
+                
+                _vdst00_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_00.val[1])));
+                _vdst00_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_00.val[1])));
+                _vdst01_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_01.val[1])));
+                _vdst01_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_01.val[1])));
+                _vdst10_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_10.val[1])));
+                _vdst10_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_10.val[1])));
+                _vdst11_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_11.val[1])));
+                _vdst11_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_11.val[1])));
+                
+                _vreal_lo = vmlaq_f32(vmulq_f32(_vdst00_lo, vmulq_f32(_vlr, _vwr_lo)), _vdst11_lo, vmulq_f32(_vli, _vwi_lo));
+                _vreal_hi = vmlaq_f32(vmulq_f32(_vdst00_hi, vmulq_f32(_vlr, _vwr_hi)), _vdst11_hi, vmulq_f32(_vli, _vwi_hi));
+                _vimag_lo = vmlaq_f32(vmulq_f32(_vdst01_lo, vmulq_f32(_vlr, _vwi_lo)), _vdst10_lo, vmulq_f32(_vli, _vwr_lo));
+                _vimag_hi = vmlaq_f32(vmulq_f32(_vdst01_hi, vmulq_f32(_vlr, _vwi_hi)), _vdst10_hi, vmulq_f32(_vli, _vwr_hi));
+                
+                _vout_lo = (float32x4x2_t){_vreal_lo, _vimag_lo};
+                _vout_hi = (float32x4x2_t){_vreal_hi, _vimag_hi};
+                
+                _vold_lo = vld2q_f32(_idst + 16);
+                _vold_hi = vld2q_f32(_idst + 24);
+                _vout_lo.val[0] = vaddq_f32(_vout_lo.val[0], _vold_lo.val[0]);
+                _vout_lo.val[1] = vaddq_f32(_vout_lo.val[1], _vold_lo.val[1]);
+                _vout_hi.val[0] = vaddq_f32(_vout_hi.val[0], _vold_hi.val[0]);
+                _vout_hi.val[1] = vaddq_f32(_vout_hi.val[1], _vold_hi.val[1]);
+                
+                vst2q_f32(_idst + 16, _vout_lo);
+                vst2q_f32(_idst + 24, _vout_hi);
+                
+#elif defined(__M__ALIGNED_8)
+                // 加载缩放因子到向量寄存器
+                float32x4_t _vlr = vdupq_n_f32(_lr);
+                float32x4_t _vli = vdupq_n_f32(_li);
+                
+                // 处理前8个元素
+                float32x4_t _vwr_lo = vld1q_f32(_wr);
+                float32x4_t _vwr_hi = vld1q_f32(_wr + 4);
+                float32x4_t _vwi_lo = vld1q_f32(_wi);
+                float32x4_t _vwi_hi = vld1q_f32(_wi + 4);
+                
+                float32x4_t _vdst00_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_00.val[0])));
+                float32x4_t _vdst00_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_00.val[0])));
+                float32x4_t _vdst01_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_01.val[0])));
+                float32x4_t _vdst01_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_01.val[0])));
+                float32x4_t _vdst10_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_10.val[0])));
+                float32x4_t _vdst10_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_10.val[0])));
+                float32x4_t _vdst11_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_11.val[0])));
+                float32x4_t _vdst11_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_11.val[0])));
+                
+                float32x4_t _vreal_lo = vmlaq_f32(vmulq_f32(_vdst00_lo, vmulq_f32(_vlr, _vwr_lo)), _vdst11_lo, vmulq_f32(_vli, _vwi_lo));
+                float32x4_t _vreal_hi = vmlaq_f32(vmulq_f32(_vdst00_hi, vmulq_f32(_vlr, _vwr_hi)), _vdst11_hi, vmulq_f32(_vli, _vwi_hi));
+                float32x4_t _vimag_lo = vmlaq_f32(vmulq_f32(_vdst01_lo, vmulq_f32(_vlr, _vwi_lo)), _vdst10_lo, vmulq_f32(_vli, _vwr_lo));
+                float32x4_t _vimag_hi = vmlaq_f32(vmulq_f32(_vdst01_hi, vmulq_f32(_vlr, _vwi_hi)), _vdst10_hi, vmulq_f32(_vli, _vwr_hi));
+                
+                float32x4x2_t _vout_lo = {_vreal_lo, _vimag_lo};
+                float32x4x2_t _vout_hi = {_vreal_hi, _vimag_hi};
+                
+                float32x4x2_t _vold_lo = vld2q_f32(_idst);
+                float32x4x2_t _vold_hi = vld2q_f32(_idst + 8);
+                _vout_lo.val[0] = vaddq_f32(_vout_lo.val[0], _vold_lo.val[0]);
+                _vout_lo.val[1] = vaddq_f32(_vout_lo.val[1], _vold_lo.val[1]);
+                _vout_hi.val[0] = vaddq_f32(_vout_hi.val[0], _vold_hi.val[0]);
+                _vout_hi.val[1] = vaddq_f32(_vout_hi.val[1], _vold_hi.val[1]);
+                
+                vst2q_f32(_idst, _vout_lo);
+                vst2q_f32(_idst + 8, _vout_hi);
+
+                if (row_end - _row >= 8) {
+                    for (int _j = 8; _j < 16; _j++) {
+                        int _jj = _j - 8;
+                        float __wr = _wr[_j], __wi = _wi[_j];
+                        _idst[_j*2  ] += (float)_block_dst_00.val[1][_jj] * (_lr * __wr) + (float)_block_dst_11.val[1][_jj] * (_li * __wi);
+                        _idst[_j*2+1] += (float)_block_dst_01.val[1][_jj] * (_lr * __wi) + (float)_block_dst_10.val[1][_jj] * (_li * __wr);
+                    }
+                }
+#else
+                for (int _j = 0; _j <= (row_end - _row < 7 ? row_end - _row : 7); _j++) {
+                    float __wr = _wr[_j], __wi = _wi[_j];
+                    _idst[_j*2  ] += (float)_block_dst_00.val[0][_j] * (_lr * __wr) + (float)_block_dst_11.val[0][_j] * (_li * __wi);
+                    _idst[_j*2+1] += (float)_block_dst_01.val[0][_j] * (_lr * __wi) + (float)_block_dst_10.val[0][_j] * (_li * __wr);
+                }
+                if (row_end - _row >= 8) {
+                    for (int _j = 8; _j <= (row_end - _row < 15 ? row_end - _row : 15); _j++) {
+                        int _jj = _j - 8;
+                        float __wr = _wr[_j], __wi = _wi[_j];
+                        _idst[_j*2  ] += (float)_block_dst_00.val[1][_jj] * (_lr * __wr) + (float)_block_dst_11.val[1][_jj] * (_li * __wi);
+                        _idst[_j*2+1] += (float)_block_dst_01.val[1][_jj] * (_lr * __wi) + (float)_block_dst_10.val[1][_jj] * (_li * __wr);
+                    }
+                }
+#endif
         }
     }
 }
@@ -1151,6 +1600,12 @@ lut_block *alloc_lut_q8(int k) {
 }
 
 
+lut_block_v7 *alloc_lut_q8_v7(int k) {
+    int _blk_n = (k+QK_K-1)/QK_K;
+    return calloc(_blk_n, sizeof(lut_block_v7));
+}
+
+
 block_ifairy_1x3 *alloc_w(int m, int k) {
     int _blk_n = (k+QK_K-1)/QK_K;
     int _row_n = (m+15)/16;
@@ -1198,6 +1653,11 @@ void free_act_block_ifairy_q16(block_ifairy_q16 *act) {
 
 
 void free_lut_q8(lut_block *lut) {
+    free(lut);
+}
+
+
+void free_lut_q8_v7(lut_block_v7 *lut) {
     free(lut);
 }
 
