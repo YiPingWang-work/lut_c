@@ -6,3 +6,4 @@ main_tmp
 test_data/act.txt
 test_data/lut.txt
 test_data/w.txt
+output/*

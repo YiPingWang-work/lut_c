@@ -1,7 +1,7 @@
 import os
 import random
 rows = 1024*16
-cols = 1024*64
+cols = 1024*16
 def generate_matrix():
     output_file = "./test_data/w.txt"
     with open(output_file, "w") as f:
@@ -18,8 +18,10 @@ def generate_act():
     with open(output_file, "w") as f:
         for i in range(cols*2):
             value = random.uniform(-1, 1)
-            if i % 2 == 0:
-                value *= 10
+            # if random.randint(0, 100) != 0:
+            #     value = 0.0
+            # if i % 2 == 0:
+            #     value *= 10
             # if value % 256 == 0:
             #     value = random.choice([-4.2, 4.2])
             # if value % 256 == 1:

@@ -52,32 +52,21 @@ void act_float_2_block_ifairy_q16(int k, const float *act_float, block_ifairy_q1
 // === 16路lut优化
 void generate_lut_q8(int k, const float *act, lut_block *lut);
 void generate_lut_q8_block_ifairy_q16(int k, const block_ifairy_q16 *act, lut_block *lut);
-void generate_lut_q8_block_ifairy_q16_tmp(int k, const block_ifairy_q16 *act, int8_t *lut_v, float *lut_scale);
 void transpose(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3 *w);
-void transpose_tmp(int m, int k, const block_ifairy *raw_w, uint8_t *w, float *w_scale_real, float *w_scale_imag);
 void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst);
-void mul_mat_mxk_kx1_with_lut_q8_tmp(int k, int row_begin, int row_end, const uint8_t *w, const float *w_scale_real, const float *w_scale_imag, const int8_t *lut_v, const float *lut_scale, float *dst);
 void mul_mat_mxk_kxn_with_lut_q8_base(int k, int row_begin, int row_end, int col_begin, int col_end, const block_ifairy_1x3 *w, const lut_block *lut_base, float *dst_base);
 void mul_mat_mxk_kxn_with_lut_q8(int k, int n, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst);
 block_ifairy_q16 *alloc_act_block_ifairy_q16(int k);
 lut_block *alloc_lut_q8(int k);
 block_ifairy_1x3 *alloc_w(int m, int k);
-uint8_t *alloc_w_tmp(int m, int k);
-float *alloc_w_scale_real_tmp(int m, int k);
-float *alloc_w_scale_imag_tmp(int m, int k);
 int8_t *alloc_lut_v_q8(int k);
 float *alloc_lut_scale_q8(int k);
 void free_act_block_ifairy_q16(block_ifairy_q16 *act);
 void free_lut_q8(lut_block *lut);
 void free_w(block_ifairy_1x3 *w);
-void free_w_tmp(uint8_t *w);
-void free_w_scale_real_tmp(float *w_scale_real);
-void free_w_scale_imag_tmp(float *w_scale_imag);
-void free_lut_v_q8_tmp(int8_t *lut_v);
-void free_lut_scale_q8_tmp(float *scale);
 
 
-// === 原程序测试
+// === 传统lut测试
 void generate_lut_q16_block_ifairy_q16_old(int k, const block_ifairy_q16 *act, int16_t *lut_v, float *lut_scale);
 void transpose_old(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3_old *w); 
 void mul_mat_mxk_kx1_with_lut_q16_old(int k, int row_begin, int row_end, const block_ifairy_1x3_old *w, const int16_t *lut, const float *lut_scale, float *dst);
@@ -87,6 +76,10 @@ block_ifairy_1x3_old *alloc_w_old(int m, int k);
 void free_lut_v_q16_old(int16_t *lut);
 void free_lut_scale_old(float* scale);
 void free_w_old(block_ifairy_1x3_old *w);
+
+// === 传统矩阵乘法和simd优化
+void mul_mat_mxk_kx1_q8(int k, int row_begin, int row_end, const block_ifairy *w, const block_ifairy_q16 *act, float *dst);
+void mul_mat_mxk_kx1_q8_simd(int k, int row_begin, int row_end, const block_ifairy *w, const block_ifairy_q16 *act, float *dst);
 
 // === 验证程序
 void mul_mat_mxk_kx1(int k, int row_begin, int row_end, const block_ifairy *w, const float *act, float *dst);

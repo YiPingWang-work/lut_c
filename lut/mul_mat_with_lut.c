@@ -487,42 +487,6 @@ void transpose(int m, int k, const block_ifairy *raw_w, block_ifairy_1x3 *w) {
 }
 
 
-void transpose_tmp(int m, int k, const block_ifairy *raw_w, uint8_t *w, float *w_scale_real, float *w_scale_imag) {
-    const int _blk_n = (k+QK_K-1)/QK_K;
-    const int _in_blk_n = (QK_K+2)/3;
-    for (int _j = 0; _j < m; _j++) {
-        for (int _blk = 0; _blk < _blk_n; _blk++) {
-            int _ii = 0;
-            #pragma unroll
-            for (int _i = 0; _i < QK_K/4; _i+=3) {
-                const uint32_t *_p = (uint32_t *)&(raw_w[_j*_blk_n + _blk].qs[_i]);
-                uint8_t _iweight_1x3_0, _iweight_1x3_1, _iweight_1x3_2, _iweight_1x3_3;
-                if (_i+3 >= QK_K/4) {
-                    uint32_t _iweight_1x12 = _p[0] << 16;
-                    _iweight_1x3_0 = _iweight_1x12 >> 18 & 0b00111111; 
-                    _iweight_1x3_1 = _iweight_1x12 >> 12 & 0b00111111;
-                    w[(((_j/16)*_blk_n + _blk)*_in_blk_n+_ii  )*16+_j%16] = three_vals2index_uint8[_iweight_1x3_0] | (_iweight_1x3_0 << 2 & 0b11000000);
-                    w[(((_j/16)*_blk_n + _blk)*_in_blk_n+_ii+1)*16+_j%16] = three_vals2index_uint8[_iweight_1x3_1] | (_iweight_1x3_1 << 2 & 0b11000000);
-                } else {
-                    uint32_t _iweight_1x12 = __builtin_bswap32(*_p) >> 8;
-                    _iweight_1x3_0 = _iweight_1x12 >> 18 & 0b00111111; 
-                    _iweight_1x3_1 = _iweight_1x12 >> 12 & 0b00111111;
-                    _iweight_1x3_2 = _iweight_1x12 >> 6  & 0b00111111; 
-                    _iweight_1x3_3 = _iweight_1x12       & 0b00111111;
-                    w[(((_j/16)*_blk_n + _blk)*_in_blk_n+_ii  )*16+(_j%16)] = three_vals2index_uint8[_iweight_1x3_0] | (_iweight_1x3_0 << 2 & 0b11000000);
-                    w[(((_j/16)*_blk_n + _blk)*_in_blk_n+_ii+1)*16+(_j%16)] = three_vals2index_uint8[_iweight_1x3_1] | (_iweight_1x3_1 << 2 & 0b11000000);
-                    w[(((_j/16)*_blk_n + _blk)*_in_blk_n+_ii+2)*16+(_j%16)] = three_vals2index_uint8[_iweight_1x3_2] | (_iweight_1x3_2 << 2 & 0b11000000);
-                    w[(((_j/16)*_blk_n + _blk)*_in_blk_n+_ii+3)*16+(_j%16)] = three_vals2index_uint8[_iweight_1x3_3] | (_iweight_1x3_3 << 2 & 0b11000000);
-                }
-                _ii += 4;
-            }
-            w_scale_real[((_j/16)*_blk_n + _blk)*16 +(_j%16)] = raw_w[_j*_blk_n + _blk].d_real;
-            w_scale_imag[((_j/16)*_blk_n + _blk)*16 +(_j%16)] = raw_w[_j*_blk_n + _blk].d_imag;
-        }
-    }
-}
-
-
 static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x4_t ilut) __attribute__((always_inline));
 static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x3, int8x16x4_t ilut) {
 
@@ -741,388 +705,6 @@ void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_
 }
 
 
-void generate_lut_q8_block_ifairy_q16_tmp(int k, const block_ifairy_q16 *act, int8_t *lut_v, float *lut_scale) {
-    const int _blk_n = (k+QK_K-1)/QK_K;
-    int ii = 0;
-    for (int _blk = 0; _blk < _blk_n; _blk++) {
-        lut_scale[_blk*2  ] = act[_blk].d_real;
-        lut_scale[_blk*2+1] = act[_blk].d_imag;
-        int8_t _r0, _i0, _r1, _i1, _r2, _i2;
-        int _i = 0;
-        for (; _i+3 < QK_K; _i+=3) {
-            
-            _r0 = (int8_t) act[_blk].x_real[_i  ];
-            _i0 = (int8_t)-act[_blk].x_imag[_i  ];
-            _r1 = (int8_t) act[_blk].x_real[_i+1];
-            _i1 = (int8_t)-act[_blk].x_imag[_i+1];
-            _r2 = (int8_t) act[_blk].x_real[_i+2];
-            _i2 = (int8_t)-act[_blk].x_imag[_i+2];
-            
-
-            {
-                lut_v[ii++] = -_r0 - _r1 - _r2;
-                lut_v[ii++] = -_r0 - _r1 + _r2;
-                lut_v[ii++] = -_r0 - _r1;
-                lut_v[ii++] = -_r0 - _r1;
-
-                lut_v[ii++] = -_r0 + _r1 - _r2;
-                lut_v[ii++] = -_r0 + _r1 + _r2;
-                lut_v[ii++] = -_r0 + _r1;
-                lut_v[ii++] = -_r0 + _r1;
-
-                lut_v[ii++] = -_r0 - _r2;
-                lut_v[ii++] = -_r0 + _r2;
-                lut_v[ii++] = -_r0;
-                lut_v[ii++] = -_r0;
-
-                lut_v[ii++] = -_r0 - _r2;
-                lut_v[ii++] = -_r0 + _r2;
-                lut_v[ii++] = -_r0;
-                lut_v[ii++] = -_r0;
-            }
-            {
-                lut_v[ii++] =  0;
-                lut_v[ii++] =  0;
-                lut_v[ii++] = -_i2;
-                lut_v[ii++] = _i2;
-
-                lut_v[ii++] = 0;
-                lut_v[ii++] = 0;
-                lut_v[ii++] = -_i2;
-                lut_v[ii++] = _i2;
-
-                lut_v[ii++] = -_i1;
-                lut_v[ii++] = -_i1;
-                lut_v[ii++] = -_i1 - _i2;
-                lut_v[ii++] = -_i1 + _i2;
-
-                lut_v[ii++] = _i1;
-                lut_v[ii++] = _i1;
-                lut_v[ii++] = _i1 - _i2;
-                lut_v[ii++] = _i1 + _i2;
-            }
-            {
-                lut_v[ii++] = 0;
-                lut_v[ii++] = 0;
-                lut_v[ii++] = -_r2;
-                lut_v[ii++] = _r2;
-
-                lut_v[ii++] = 0;
-                lut_v[ii++] = 0;
-                lut_v[ii++] = -_r2;
-                lut_v[ii++] = _r2;
-
-                lut_v[ii++] = -_r1;
-                lut_v[ii++] = -_r1;
-                lut_v[ii++] = -_r1 - _r2;
-                lut_v[ii++] = -_r1 + _r2;
-
-                lut_v[ii++] = _r1;
-                lut_v[ii++] = _r1;
-                lut_v[ii++] = _r1 - _r2;
-                lut_v[ii++] = _r1 + _r2;
-            }
-
-            {
-                lut_v[ii++] = -_i0 - _i1 - _i2;
-                lut_v[ii++] = -_i0 - _i1 + _i2;
-                lut_v[ii++] = -_i0 - _i1;
-                lut_v[ii++] = -_i0 - _i1;
-
-                lut_v[ii++] = -_i0 + _i1 - _i2;
-                lut_v[ii++] = -_i0 + _i1 + _i2;
-                lut_v[ii++] = -_i0 + _i1;
-                lut_v[ii++] = -_i0 + _i1;
-
-                lut_v[ii++] = -_i0 - _i2;
-                lut_v[ii++] = -_i0 + _i2;
-                lut_v[ii++] = -_i0;
-                lut_v[ii++] = -_i0;
-
-                lut_v[ii++] = -_i0 - _i2;
-                lut_v[ii++] = -_i0 + _i2;
-                lut_v[ii++] = -_i0;
-                lut_v[ii++] = -_i0;
-            }
-
-        }
-        
-        // 处理剩余部分
-        _r0 = (int8_t) act[_blk].x_real[_i  ];
-        _i0 = (int8_t)-act[_blk].x_imag[_i  ];
-        _r1 = (int8_t) 0;
-        _i1 = (int8_t) 0;
-        _r2 = (int8_t) 0;
-        _i2 = (int8_t) 0;
-
-        {
-            lut_v[ii++] = -_r0 - _r1 - _r2;
-            lut_v[ii++] = -_r0 - _r1 + _r2;
-            lut_v[ii++] = -_r0 - _r1;
-            lut_v[ii++] = -_r0 - _r1;
-
-            lut_v[ii++] = -_r0 + _r1 - _r2;
-            lut_v[ii++] = -_r0 + _r1 + _r2;
-            lut_v[ii++] = -_r0 + _r1;
-            lut_v[ii++] = -_r0 + _r1;
-
-            lut_v[ii++] = -_r0 - _r2;
-            lut_v[ii++] = -_r0 + _r2;
-            lut_v[ii++] = -_r0;
-            lut_v[ii++] = -_r0;
-
-            lut_v[ii++] = -_r0 - _r2;
-            lut_v[ii++] = -_r0 + _r2;
-            lut_v[ii++] = -_r0;
-            lut_v[ii++] = -_r0;
-        }
-
-        {
-            lut_v[ii++] = 0;
-            lut_v[ii++] = 0;
-            lut_v[ii++] = -_i2;
-            lut_v[ii++] = _i2;
-
-            lut_v[ii++] = 0;
-            lut_v[ii++] = 0;
-            lut_v[ii++] = -_i2;
-            lut_v[ii++] = _i2;
-
-            lut_v[ii++] = -_i1;
-            lut_v[ii++] = -_i1;
-            lut_v[ii++] = -_i1 - _i2;
-            lut_v[ii++] = -_i1 + _i2;
-
-            lut_v[ii++] = _i1;
-            lut_v[ii++] = _i1;
-            lut_v[ii++] = _i1 - _i2;
-            lut_v[ii++] = _i1 + _i2;
-        }
-
-        {
-            lut_v[ii++] = 0;
-            lut_v[ii++] = 0;
-            lut_v[ii++] = -_r2;
-            lut_v[ii++] = _r2;
-
-            lut_v[ii++] = 0;
-            lut_v[ii++] = 0;
-            lut_v[ii++] = -_r2;
-            lut_v[ii++] = _r2;
-
-            lut_v[ii++] = -_r1;
-            lut_v[ii++] = -_r1;
-            lut_v[ii++] = -_r1 - _r2;
-            lut_v[ii++] = -_r1 + _r2;
-
-            lut_v[ii++] = _r1;
-            lut_v[ii++] = _r1;
-            lut_v[ii++] = _r1 - _r2;
-            lut_v[ii++] = _r1 + _r2;
-        }
-        
-        {
-            lut_v[ii++] = -_i0 - _i1 - _i2;
-            lut_v[ii++] = -_i0 - _i1 + _i2;
-            lut_v[ii++] = -_i0 - _i1;
-            lut_v[ii++] = -_i0 - _i1;
-
-            lut_v[ii++] = -_i0 + _i1 - _i2;
-            lut_v[ii++] = -_i0 + _i1 + _i2;
-            lut_v[ii++] = -_i0 + _i1;
-            lut_v[ii++] = -_i0 + _i1;
-
-            lut_v[ii++] = -_i0 - _i2;
-            lut_v[ii++] = -_i0 + _i2;
-            lut_v[ii++] = -_i0;
-            lut_v[ii++] = -_i0;
-
-            lut_v[ii++] = -_i0 - _i2;
-            lut_v[ii++] = -_i0 + _i2;
-            lut_v[ii++] = -_i0;
-            lut_v[ii++] = -_i0;
-        }
-    }
-}
-
-
-void mul_mat_mxk_kx1_with_lut_q8_tmp(int k, int row_begin, int row_end, const uint8_t *w, const float *w_scale_real, const float *w_scale_imag, const int8_t *lut_v, const float *lut_scale, float *dst) {
-    const int _blk_n = (k+QK_K-1)/QK_K;
-    const int _in_blk_n = (QK_K+2)/3;
-    for (int _row = row_begin; _row <= row_end; _row+=16) {
-        const uint8_t *_w_base = w + (_row >> 4)*_blk_n*_in_blk_n*16;
-        for (int _blk = 0; _blk < _blk_n; _blk++) {
-            
-            const uint8_t *_w_blk_base = _w_base + _blk * _in_blk_n * 16;
-            const int8_t *_lut_blk_base = lut_v + _blk * _in_blk_n * 64;
-
-            int16x8x2_t _block_dst_00 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
-            int16x8x2_t _block_dst_01 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
-            int16x8x2_t _block_dst_10 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
-            int16x8x2_t _block_dst_11 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
-            
-            #pragma unroll
-            for (int _i = 0; _i < _in_blk_n; _i++) {
-                uint8x16_t _iweight_16x3 = vld1q_u8(_w_blk_base + _i * 16);
-                int8x16x4_t ilut = vld1q_s8_x4(_lut_blk_base + _i * 64);
-
-                int8x16x4_t _iret = mul_mat_block_16x3_3x1_with_lut(_iweight_16x3, ilut);
-
-                _block_dst_00.val[0] = vaddw_s8(_block_dst_00.val[0],  vget_low_s8(_iret.val[0]));
-                _block_dst_00.val[1] = vaddw_s8(_block_dst_00.val[1], vget_high_s8(_iret.val[0]));
-                _block_dst_01.val[0] = vaddw_s8(_block_dst_01.val[0],  vget_low_s8(_iret.val[1]));
-                _block_dst_01.val[1] = vaddw_s8(_block_dst_01.val[1], vget_high_s8(_iret.val[1]));
-                _block_dst_10.val[0] = vaddw_s8(_block_dst_10.val[0],  vget_low_s8(_iret.val[2]));
-                _block_dst_10.val[1] = vaddw_s8(_block_dst_10.val[1], vget_high_s8(_iret.val[2]));
-                _block_dst_11.val[0] = vaddw_s8(_block_dst_11.val[0],  vget_low_s8(_iret.val[3]));
-                _block_dst_11.val[1] = vaddw_s8(_block_dst_11.val[1], vget_high_s8(_iret.val[3]));
-            }
-
-            // 反量化，写回
-            const float _lr = lut_scale[_blk*2  ];
-            const float _li = lut_scale[_blk*2+1];
-            const int _w_row = _row >> 4;
-            const float *_wr = w_scale_real + (_w_row * _blk_n + _blk)*16;
-            const float *_wi = w_scale_imag + (_w_row * _blk_n + _blk)*16;
-            float *_idst = dst + _row * 2;
-
-#if defined(__M__ALIGNED_16)
-                // 加载缩放因子到向量寄存器
-                float32x4_t _vlr = vdupq_n_f32(_lr);
-                float32x4_t _vli = vdupq_n_f32(_li);
-                
-                // 处理前8个元素
-                float32x4_t _vwr_lo = vld1q_f32(_wr);
-                float32x4_t _vwr_hi = vld1q_f32(_wr + 4);
-                float32x4_t _vwi_lo = vld1q_f32(_wi);
-                float32x4_t _vwi_hi = vld1q_f32(_wi + 4);
-                
-                float32x4_t _vdst00_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_00.val[0])));
-                float32x4_t _vdst00_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_00.val[0])));
-                float32x4_t _vdst01_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_01.val[0])));
-                float32x4_t _vdst01_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_01.val[0])));
-                float32x4_t _vdst10_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_10.val[0])));
-                float32x4_t _vdst10_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_10.val[0])));
-                float32x4_t _vdst11_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_11.val[0])));
-                float32x4_t _vdst11_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_11.val[0])));
-                
-                float32x4_t _vreal_lo = vmlaq_f32(vmulq_f32(_vdst00_lo, vmulq_f32(_vlr, _vwr_lo)), _vdst11_lo, vmulq_f32(_vli, _vwi_lo));
-                float32x4_t _vreal_hi = vmlaq_f32(vmulq_f32(_vdst00_hi, vmulq_f32(_vlr, _vwr_hi)), _vdst11_hi, vmulq_f32(_vli, _vwi_hi));
-                float32x4_t _vimag_lo = vmlaq_f32(vmulq_f32(_vdst01_lo, vmulq_f32(_vlr, _vwi_lo)), _vdst10_lo, vmulq_f32(_vli, _vwr_lo));
-                float32x4_t _vimag_hi = vmlaq_f32(vmulq_f32(_vdst01_hi, vmulq_f32(_vlr, _vwi_hi)), _vdst10_hi, vmulq_f32(_vli, _vwr_hi));
-                
-                float32x4x2_t _vout_lo = {_vreal_lo, _vimag_lo};
-                float32x4x2_t _vout_hi = {_vreal_hi, _vimag_hi};
-                
-                float32x4x2_t _vold_lo = vld2q_f32(_idst);
-                float32x4x2_t _vold_hi = vld2q_f32(_idst + 8);
-                _vout_lo.val[0] = vaddq_f32(_vout_lo.val[0], _vold_lo.val[0]);
-                _vout_lo.val[1] = vaddq_f32(_vout_lo.val[1], _vold_lo.val[1]);
-                _vout_hi.val[0] = vaddq_f32(_vout_hi.val[0], _vold_hi.val[0]);
-                _vout_hi.val[1] = vaddq_f32(_vout_hi.val[1], _vold_hi.val[1]);
-                
-                vst2q_f32(_idst, _vout_lo);
-                vst2q_f32(_idst + 8, _vout_hi);
-                
-                
-                // 处理后8个元素
-                _vwr_lo = vld1q_f32(_wr + 8);
-                _vwr_hi = vld1q_f32(_wr + 12);
-                _vwi_lo = vld1q_f32(_wi + 8);
-                _vwi_hi = vld1q_f32(_wi + 12);
-                
-                _vdst00_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_00.val[1])));
-                _vdst00_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_00.val[1])));
-                _vdst01_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_01.val[1])));
-                _vdst01_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_01.val[1])));
-                _vdst10_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_10.val[1])));
-                _vdst10_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_10.val[1])));
-                _vdst11_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_11.val[1])));
-                _vdst11_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_11.val[1])));
-                
-                _vreal_lo = vmlaq_f32(vmulq_f32(_vdst00_lo, vmulq_f32(_vlr, _vwr_lo)), _vdst11_lo, vmulq_f32(_vli, _vwi_lo));
-                _vreal_hi = vmlaq_f32(vmulq_f32(_vdst00_hi, vmulq_f32(_vlr, _vwr_hi)), _vdst11_hi, vmulq_f32(_vli, _vwi_hi));
-                _vimag_lo = vmlaq_f32(vmulq_f32(_vdst01_lo, vmulq_f32(_vlr, _vwi_lo)), _vdst10_lo, vmulq_f32(_vli, _vwr_lo));
-                _vimag_hi = vmlaq_f32(vmulq_f32(_vdst01_hi, vmulq_f32(_vlr, _vwi_hi)), _vdst10_hi, vmulq_f32(_vli, _vwr_hi));
-                
-                _vout_lo = (float32x4x2_t){_vreal_lo, _vimag_lo};
-                _vout_hi = (float32x4x2_t){_vreal_hi, _vimag_hi};
-                
-                _vold_lo = vld2q_f32(_idst + 16);
-                _vold_hi = vld2q_f32(_idst + 24);
-                _vout_lo.val[0] = vaddq_f32(_vout_lo.val[0], _vold_lo.val[0]);
-                _vout_lo.val[1] = vaddq_f32(_vout_lo.val[1], _vold_lo.val[1]);
-                _vout_hi.val[0] = vaddq_f32(_vout_hi.val[0], _vold_hi.val[0]);
-                _vout_hi.val[1] = vaddq_f32(_vout_hi.val[1], _vold_hi.val[1]);
-                
-                vst2q_f32(_idst + 16, _vout_lo);
-                vst2q_f32(_idst + 24, _vout_hi);
-                
-#elif defined(__M__ALIGNED_8)
-                // 加载缩放因子到向量寄存器
-                float32x4_t _vlr = vdupq_n_f32(_lr);
-                float32x4_t _vli = vdupq_n_f32(_li);
-                
-                // 处理前8个元素
-                float32x4_t _vwr_lo = vld1q_f32(_wr);
-                float32x4_t _vwr_hi = vld1q_f32(_wr + 4);
-                float32x4_t _vwi_lo = vld1q_f32(_wi);
-                float32x4_t _vwi_hi = vld1q_f32(_wi + 4);
-                
-                float32x4_t _vdst00_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_00.val[0])));
-                float32x4_t _vdst00_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_00.val[0])));
-                float32x4_t _vdst01_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_01.val[0])));
-                float32x4_t _vdst01_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_01.val[0])));
-                float32x4_t _vdst10_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_10.val[0])));
-                float32x4_t _vdst10_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_10.val[0])));
-                float32x4_t _vdst11_lo = vcvtq_f32_s32(vmovl_s16(vget_low_s16(_block_dst_11.val[0])));
-                float32x4_t _vdst11_hi = vcvtq_f32_s32(vmovl_s16(vget_high_s16(_block_dst_11.val[0])));
-                
-                float32x4_t _vreal_lo = vmlaq_f32(vmulq_f32(_vdst00_lo, vmulq_f32(_vlr, _vwr_lo)), _vdst11_lo, vmulq_f32(_vli, _vwi_lo));
-                float32x4_t _vreal_hi = vmlaq_f32(vmulq_f32(_vdst00_hi, vmulq_f32(_vlr, _vwr_hi)), _vdst11_hi, vmulq_f32(_vli, _vwi_hi));
-                float32x4_t _vimag_lo = vmlaq_f32(vmulq_f32(_vdst01_lo, vmulq_f32(_vlr, _vwi_lo)), _vdst10_lo, vmulq_f32(_vli, _vwr_lo));
-                float32x4_t _vimag_hi = vmlaq_f32(vmulq_f32(_vdst01_hi, vmulq_f32(_vlr, _vwi_hi)), _vdst10_hi, vmulq_f32(_vli, _vwr_hi));
-                
-                float32x4x2_t _vout_lo = {_vreal_lo, _vimag_lo};
-                float32x4x2_t _vout_hi = {_vreal_hi, _vimag_hi};
-                
-                float32x4x2_t _vold_lo = vld2q_f32(_idst);
-                float32x4x2_t _vold_hi = vld2q_f32(_idst + 8);
-                _vout_lo.val[0] = vaddq_f32(_vout_lo.val[0], _vold_lo.val[0]);
-                _vout_lo.val[1] = vaddq_f32(_vout_lo.val[1], _vold_lo.val[1]);
-                _vout_hi.val[0] = vaddq_f32(_vout_hi.val[0], _vold_hi.val[0]);
-                _vout_hi.val[1] = vaddq_f32(_vout_hi.val[1], _vold_hi.val[1]);
-                
-                vst2q_f32(_idst, _vout_lo);
-                vst2q_f32(_idst + 8, _vout_hi);
-
-                if (row_end - _row >= 8) {
-                    for (int _j = 8; _j < 16; _j++) {
-                        int _jj = _j - 8;
-                        float __wr = _wr[_j], __wi = _wi[_j];
-                        _idst[_j*2  ] += (float)_block_dst_00.val[1][_jj] * (_lr * __wr) + (float)_block_dst_11.val[1][_jj] * (_li * __wi);
-                        _idst[_j*2+1] += (float)_block_dst_01.val[1][_jj] * (_lr * __wi) + (float)_block_dst_10.val[1][_jj] * (_li * __wr);
-                    }
-                }
-#else
-                for (int _j = 0; _j <= (row_end - _row < 7 ? row_end - _row : 7); _j++) {
-                    float __wr = _wr[_j], __wi = _wi[_j];
-                    _idst[_j*2  ] += (float)_block_dst_00.val[0][_j] * (_lr * __wr) + (float)_block_dst_11.val[0][_j] * (_li * __wi);
-                    _idst[_j*2+1] += (float)_block_dst_01.val[0][_j] * (_lr * __wi) + (float)_block_dst_10.val[0][_j] * (_li * __wr);
-                }
-                if (row_end - _row >= 8) {
-                    for (int _j = 8; _j <= (row_end - _row < 15 ? row_end - _row : 15); _j++) {
-                        int _jj = _j - 8;
-                        float __wr = _wr[_j], __wi = _wi[_j];
-                        _idst[_j*2  ] += (float)_block_dst_00.val[1][_jj] * (_lr * __wr) + (float)_block_dst_11.val[1][_jj] * (_li * __wi);
-                        _idst[_j*2+1] += (float)_block_dst_01.val[1][_jj] * (_lr * __wi) + (float)_block_dst_10.val[1][_jj] * (_li * __wr);
-                    }
-                }
-#endif
-        }
-    }
-}
-
 
 void mul_mat_mxk_kxn_with_lut_q8_base(int k, int row_begin, int row_end, int col_begin, int col_end, const block_ifairy_1x3 *w, const lut_block *lut_base, float *dst_base) {
     const int _blk_n = (k+QK_K-1)/QK_K;
@@ -1159,26 +741,6 @@ block_ifairy_1x3 *alloc_w(int m, int k) {
 }
 
 
-uint8_t *alloc_w_tmp(int m, int k) {
-    int _blk_n = (k+QK_K-1)/QK_K;
-    int _in_blk_n = (QK_K+2)/3;
-    int _row_n = (m+15)/16;
-    return calloc(_blk_n * _in_blk_n * 16 * _row_n, sizeof(uint8_t));
-}
-
-
-float *alloc_w_scale_real_tmp(int m, int k) {
-    int _blk_n = (k+QK_K-1)/QK_K;
-    return calloc(_blk_n * m, sizeof(float));
-}
-
-
-float *alloc_w_scale_imag_tmp(int m, int k) {
-    int _blk_n = (k+QK_K-1)/QK_K;
-    return calloc(_blk_n * m, sizeof(float));
-}
-
-
 int8_t *alloc_lut_v_q8(int k) {
     int _blk_n = (k+QK_K-1)/QK_K;
     int _in_blk_n = (QK_K+2)/3;
@@ -1207,29 +769,6 @@ void free_w(block_ifairy_1x3 *w) {
 }
 
 
-void free_w_tmp(uint8_t *w) {
-    free(w);
-}
-
-
-void free_w_scale_real_tmp(float *w_scale_real) {
-    free(w_scale_real);
-}
-
-
-void free_w_scale_imag_tmp(float *w_scale_imag) {
-    free(w_scale_imag);
-}
-
-
-void free_lut_v_q8_tmp(int8_t *lut_v) {
-    free(lut_v);
-}
-
-
-void free_lut_scale_q8_tmp(float *lut_scale) {
-    free(lut_scale);
-}
 
 
 
@@ -1293,6 +832,107 @@ void mul_mat_mxk_kx1(int k, int row_begin, int row_end, const block_ifairy *w, c
 }
 
 
+// ================================ 乘法程序（使用量化） ================================
+static const int8_t sx_q8[4] = { -1,  1,  0,  0 };
+static const int8_t sy_q8[4] = {  0,  0, -1,  1 };
+
+void mul_mat_mxk_kx1_q8(int k, int row_begin, int row_end, const block_ifairy *w, const block_ifairy_q16 *act, float *dst) {
+    int _blk_n = (k+QK_K-1)/QK_K;
+    for (int _row = row_begin; _row <= row_end; _row++) {
+        for (int _blk = 0; _blk < _blk_n; _blk++) {
+            int32_t ac = 0, bd = 0, ad = 0, bc = 0;
+            for (int _i = 0; _i < QK_K/4; _i++) {
+                uint8_t _w4 = w[_row*_blk_n+_blk].qs[_i];
+                int16_t _a4[8] = {
+                    (int16_t)(int8_t)act[_blk].x_real[_i*4],
+                    (int16_t)(int8_t)act[_blk].x_imag[_i*4],
+                    (int16_t)(int8_t)act[_blk].x_real[_i*4+1],
+                    (int16_t)(int8_t)act[_blk].x_imag[_i*4+1],
+                    (int16_t)(int8_t)act[_blk].x_real[_i*4+2],
+                    (int16_t)(int8_t)act[_blk].x_imag[_i*4+2],
+                    (int16_t)(int8_t)act[_blk].x_real[_i*4+3],
+                    (int16_t)(int8_t)act[_blk].x_imag[_i*4+3],
+                };
+                for (int _k = 0; _k < 4; _k++) {
+                    uint8_t _code = (_w4 >> (2 * (3-_k))) & 0x3;
+
+                    int16_t _xr = _a4[2 * _k];
+                    int16_t _xi = -_a4[2 * _k + 1];
+
+                    // 与 old LUT 同定义：
+                    // i 分量采用共轭表示 i = -x_imag
+                    // ac = Σ(r * sx), bd = Σ(i * sy), ad = Σ(r * sy), bc = Σ(i * sx)
+                    ac += _xr * sx_q8[_code];
+                    bd += _xi * sy_q8[_code];
+                    ad += _xr * sy_q8[_code];
+                    bc += _xi * sx_q8[_code];
+                }
+
+            }
+            float _wr = w[_row*_blk_n+_blk].d_real;
+            float _wi = w[_row*_blk_n+_blk].d_imag;
+            float _ai = act[_blk].d_imag;
+            float _ar = act[_blk].d_real;
+            // 反量化（实虚交替写回）
+            dst[2*_row]   += (float)ac * _ar * _wr - (float)bd * _ai * _wi;
+            dst[2*_row+1] += (float)ad * _ar * _wi + (float)bc * _ai * _wr;
+        }
+    }
+}
+
+// ================================ 乘法程序（SIMD优化） ================================
+
+void mul_mat_mxk_kx1_q8_simd(int k, int row_begin, int row_end, const block_ifairy *w, const block_ifairy_q16 *act, float *dst) {
+    const int _blk_n = (k + QK_K - 1) / QK_K;
+    const int8x8_t _shift_r = {-6, -4, -2, 0, 0, 0, 0, 0};
+    const uint8x8_t _mask2 = vdup_n_u8(0x03);
+    const int8x8_t _sx_tbl = {-1, 1, 0, 0, 0, 0, 0, 0};
+    const int8x8_t _sy_tbl = { 0, 0,-1, 1, 0, 0, 0, 0};
+    for (int _row = row_begin; _row <= row_end; _row++) {
+        for (int _blk = 0; _blk < _blk_n; _blk++) {
+            int32_t ac = 0, bd = 0, ad = 0, bc = 0;
+
+            for (int _i = 0; _i < QK_K / 4; _i++) {
+                const uint8_t _w4 = w[_row * _blk_n + _blk].qs[_i];
+
+                const int16_t a0r = (int16_t)(int8_t)act[_blk].x_real[_i * 4 + 0];
+                const int16_t a0i = (int16_t)(int8_t)act[_blk].x_imag[_i * 4 + 0];
+                const int16_t a1r = (int16_t)(int8_t)act[_blk].x_real[_i * 4 + 1];
+                const int16_t a1i = (int16_t)(int8_t)act[_blk].x_imag[_i * 4 + 1];
+                const int16_t a2r = (int16_t)(int8_t)act[_blk].x_real[_i * 4 + 2];
+                const int16_t a2i = (int16_t)(int8_t)act[_blk].x_imag[_i * 4 + 2];
+                const int16_t a3r = (int16_t)(int8_t)act[_blk].x_real[_i * 4 + 3];
+                const int16_t a3i = (int16_t)(int8_t)act[_blk].x_imag[_i * 4 + 3];
+
+                // 与 q8 标量版一致：xi 采用共轭形式
+                const int16x4_t xr4 = {a0r, a1r, a2r, a3r};
+                const int16x4_t xi4 = {-a0i, -a1i, -a2i, -a3i};
+
+                // SIMD拆码：一次得到 c0,c1,c2,c3，并向量查表到 sx4/sy4
+                const uint8x8_t code8 = vand_u8(vshl_u8(vdup_n_u8(_w4), _shift_r), _mask2);
+                const int8x8_t sx8 = vtbl1_s8(_sx_tbl, code8);
+                const int8x8_t sy8 = vtbl1_s8(_sy_tbl, code8);
+                const int16x4_t sx4 = vget_low_s16(vmovl_s8(sx8));
+                const int16x4_t sy4 = vget_low_s16(vmovl_s8(sy8));
+
+                ac += vaddvq_s32(vmull_s16(xr4, sx4));
+                bd += vaddvq_s32(vmull_s16(xi4, sy4));
+                ad += vaddvq_s32(vmull_s16(xr4, sy4));
+                bc += vaddvq_s32(vmull_s16(xi4, sx4));
+            }
+
+            const float _wr = w[_row * _blk_n + _blk].d_real;
+            const float _wi = w[_row * _blk_n + _blk].d_imag;
+            const float _ai = act[_blk].d_imag;
+            const float _ar = act[_blk].d_real;
+
+            dst[2 * _row]     += (float)ac * _ar * _wr - (float)bd * _ai * _wi;
+            dst[2 * _row + 1] += (float)ad * _ar * _wi + (float)bc * _ai * _wr;
+        }
+    }
+}
+
+
 
 // ================================ 1路LUT ================================
 static const int8_t sx[4] = { -1,  1,  0,  0 };
@@ -1300,9 +940,9 @@ static const int8_t sy[4] = {  0,  0, -1,  1 };
 
 
 void generate_lut_q16_block_ifairy_q16_old(int k, const block_ifairy_q16 *act, int16_t *lut_v, float *lut_scale) {
-    int _block_n = (k+QK_K-1)/QK_K;
+    int _blk_n = (k+QK_K-1)/QK_K;
     int _ii = 0;
-    for (int _blk = 0; _blk < _block_n; _blk++) {
+    for (int _blk = 0; _blk < _blk_n; _blk++) {
         lut_scale[_blk*2  ] = act[_blk].d_real;
         lut_scale[_blk*2+1] = act[_blk].d_imag;
         // 生成lut表
@@ -1310,18 +950,18 @@ void generate_lut_q16_block_ifairy_q16_old(int k, const block_ifairy_q16 *act, i
             int8_t _r0, _i0, _r1, _i1, _r2, _i2;
             if (_i+3 >= QK_K) {
                 _r0 = (int8_t) act[_blk].x_real[_i  ];
-                _i0 = (int8_t) act[_blk].x_imag[_i  ];
+                _i0 = (int8_t) -act[_blk].x_imag[_i  ];
                 _r1 = (int8_t) 0;
                 _i1 = (int8_t) 0;
                 _r2 = (int8_t) 0;
                 _i2 = (int8_t) 0;
             } else {
                 _r0 = (int8_t) act[_blk].x_real[_i  ];
-                _i0 = (int8_t) act[_blk].x_imag[_i  ];
+                _i0 = (int8_t) -act[_blk].x_imag[_i  ];
                 _r1 = (int8_t) act[_blk].x_real[_i+1];
-                _i1 = (int8_t) act[_blk].x_imag[_i+1];
+                _i1 = (int8_t) -act[_blk].x_imag[_i+1];
                 _r2 = (int8_t) act[_blk].x_real[_i+2];
-                _i2 = (int8_t) act[_blk].x_imag[_i+2];
+                _i2 = (int8_t) -act[_blk].x_imag[_i+2];
             } 
             for (int __i = 0; __i < 4; __i++) {
                 for (int __j = 0; __j < 4; __j++) {
@@ -1410,8 +1050,8 @@ void mul_mat_mxk_kx1_with_lut_q16_old(int k, int row_begin, int row_end, const b
                 _isum = vaddw_s16(_isum, _abcd);
             }
             // 反量化，写回
-            dst[(_row)*2  ] += (float)(_isum[0]) * lut_scale[_blk*2] * w[(_row)*_blk_n+_blk].d_real + (float)(_isum[1]) * lut_scale[_blk*2+1] * w[(_row)*_blk_n+_blk].d_imag;
-            dst[(_row)*2+1] += (float)(_isum[2]) * lut_scale[_blk*2] * w[(_row)*_blk_n+_blk].d_imag - (float)(_isum[3]) * lut_scale[_blk*2+1] * w[(_row)*_blk_n+_blk].d_real;
+            dst[(_row)*2  ] += (float)(_isum[0]) * lut_scale[_blk*2] * w[(_row)*_blk_n+_blk].d_real - (float)(_isum[1]) * lut_scale[_blk*2+1] * w[(_row)*_blk_n+_blk].d_imag;
+            dst[(_row)*2+1] += (float)(_isum[2]) * lut_scale[_blk*2] * w[(_row)*_blk_n+_blk].d_imag + (float)(_isum[3]) * lut_scale[_blk*2+1] * w[(_row)*_blk_n+_blk].d_real;
         }
     }
 }
