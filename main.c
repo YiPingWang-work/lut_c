@@ -263,24 +263,24 @@ void compare(const block_ifairy *w, const float *act) {
     printf("全精度计算,  耗时: %lld us\n", (t1 - t0));
     
 
-    block_ifairy_q16 *act_block = alloc_act_block_ifairy_q16(K);
     // 16路查表
-    act_float_2_block_ifairy_q16(K, act, act_block, 42.6f);
-    lut_block *lut = alloc_lut_q8(K);
+    lut_block *lut_hi = alloc_lut_q8(K);
+    lut_block *lut_lo = alloc_lut_q8(K);
     block_ifairy_1x3 *_w = alloc_w(M, K);
     t0 = now_ns();
     transpose(M, K, w, _w);
     t1 = now_ns();
     printf("转置权重, 耗时: %f us\n", (float)(t1 - t0)/K);
     t0 = now_ns();
-    generate_lut_q8_block_ifairy_q16(K, act_block, lut);
+    generate_lut_q8(K, act, lut_hi, lut_lo, 1024.0f);
     t1 = now_ns();
-    mul_mat_mxk_kx1_with_lut_q8(K, 0, M-1, _w, lut, dst2);
+    mul_mat_mxk_kx1_with_lut_q8(K, 0, M-1, _w, lut_hi, lut_lo, dst2);
     long long t2 = now_ns();
     printf("本文方法, 耗时: %lld us, 生成LUT耗时: %lld us\n", (t2 - t0), (t1 - t0));
-    free_lut_q8(lut);
-    
+    free_lut_q8(lut_lo);
+    free_lut_q8(lut_hi);
 
+    block_ifairy_q16 *act_block = alloc_act_block_ifairy_q16(K);
     // 1路查表
     act_float_2_block_ifairy_q16(K, act, act_block, 127.0f);
     int16_t *lut_v_old = alloc_lut_v_q16_old(K);
@@ -423,387 +423,374 @@ void compare(const block_ifairy *w, const float *act) {
 }
 
 
-void benchmark_speedup_from_file(const char *matrix_file, const char *act_file) {
-    const int test_cases[][2] = {
-        {8192*2, 8192*2},
-        {16, 16},
-        {128, 128},
-        {512, 512},
-        {1536, 1024},
-        {1536, 2048},
-        {4096, 2048},
-        {4096, 4096},
-        {8192, 4096},
-        {8192, 8192},
-    };
-    const int case_n = (int)(sizeof(test_cases) / sizeof(test_cases[0]));
+// void benchmark_speedup_from_file(const char *matrix_file, const char *act_file) {
+//     const int test_cases[][2] = {
+//         {8192*2, 8192*2},
+//         {16, 16},
+//         {128, 128},
+//         {512, 512},
+//         {1536, 1024},
+//         {1536, 2048},
+//         {4096, 2048},
+//         {4096, 4096},
+//         {8192, 4096},
+//         {8192, 8192},
+//     };
+//     const int case_n = (int)(sizeof(test_cases) / sizeof(test_cases[0]));
 
-    printf("\n===== Speedup vs 传统矩阵乘法 =====\n");
-    printf("LUT计时=生成LUT+计算（不含transpose）\n");
-    printf("%-12s %-12s %-12s %-12s %-12s\n",
-        "M,K", "全精度", "本文LUT16", "传统LUT1", "SIMD");
+//     printf("\n===== Speedup vs 传统矩阵乘法 =====\n");
+//     printf("LUT计时=生成LUT+计算（不含transpose）\n");
+//     printf("%-12s %-12s %-12s %-12s %-12s\n",
+//         "M,K", "全精度", "本文LUT16", "传统LUT1", "SIMD");
 
-    for (int ci = 0; ci < case_n; ci++) {
-        M = test_cases[ci][0];
-        K = test_cases[ci][1];
+//     for (int ci = 0; ci < case_n; ci++) {
+//         M = test_cases[ci][0];
+//         K = test_cases[ci][1];
 
-        const int blk_n = (K + QK_K - 1) / QK_K;
-        const int act_pad_len = blk_n * QK_K * 2;
+//         const int blk_n = (K + QK_K - 1) / QK_K;
+//         const int act_pad_len = blk_n * QK_K * 2;
 
-        block_ifairy *w = calloc((size_t)M * blk_n, sizeof(block_ifairy));
-        float *act_raw = calloc((size_t)K * 2, sizeof(float));
-        float *act = calloc((size_t)act_pad_len, sizeof(float));
+//         block_ifairy *w = calloc((size_t)M * blk_n, sizeof(block_ifairy));
+//         float *act_raw = calloc((size_t)K * 2, sizeof(float));
+//         float *act = calloc((size_t)act_pad_len, sizeof(float));
 
-        float *dst_fp = calloc((size_t)M * 2, sizeof(float));
-        float *dst_lut16 = calloc((size_t)M * 2, sizeof(float));
-        float *dst_lut1 = calloc((size_t)M * 2, sizeof(float));
-        float *dst_trad = calloc((size_t)M * 2, sizeof(float));
-        float *dst_simd = calloc((size_t)M * 2, sizeof(float));
+//         float *dst_fp = calloc((size_t)M * 2, sizeof(float));
+//         float *dst_lut16 = calloc((size_t)M * 2, sizeof(float));
+//         float *dst_lut1 = calloc((size_t)M * 2, sizeof(float));
+//         float *dst_trad = calloc((size_t)M * 2, sizeof(float));
+//         float *dst_simd = calloc((size_t)M * 2, sizeof(float));
 
-        if (!w || !act_raw || !act || !dst_fp || !dst_lut16 || !dst_lut1 || !dst_trad || !dst_simd) {
-            fprintf(stderr, "OOM at case M=%d K=%d\n", M, K);
-            free(w); free(act_raw); free(act);
-            free(dst_fp); free(dst_lut16); free(dst_lut1); free(dst_trad); free(dst_simd);
-            return;
-        }
+//         if (!w || !act_raw || !act || !dst_fp || !dst_lut16 || !dst_lut1 || !dst_trad || !dst_simd) {
+//             fprintf(stderr, "OOM at case M=%d K=%d\n", M, K);
+//             free(w); free(act_raw); free(act);
+//             free(dst_fp); free(dst_lut16); free(dst_lut1); free(dst_trad); free(dst_simd);
+//             return;
+//         }
 
-        int rc = load_w_bit(matrix_file, w);
-        if (rc != 0) {
-            fprintf(stderr, "load_w_bit failed at M=%d K=%d rc=%d\n", M, K, rc);
-            free(w); free(act_raw); free(act);
-            free(dst_fp); free(dst_lut16); free(dst_lut1); free(dst_trad); free(dst_simd);
-            return;
-        }
-        rc = load_act_float(act_file, act_raw, K * 2);
-        if (rc != 0) {
-            fprintf(stderr, "load_act_float failed at M=%d K=%d rc=%d\n", M, K, rc);
-            free(w); free(act_raw); free(act);
-            free(dst_fp); free(dst_lut16); free(dst_lut1); free(dst_trad); free(dst_simd);
-            return;
-        }
-        memcpy(act, act_raw, (size_t)K * 2 * sizeof(float));
+//         int rc = load_w_bit(matrix_file, w);
+//         if (rc != 0) {
+//             fprintf(stderr, "load_w_bit failed at M=%d K=%d rc=%d\n", M, K, rc);
+//             free(w); free(act_raw); free(act);
+//             free(dst_fp); free(dst_lut16); free(dst_lut1); free(dst_trad); free(dst_simd);
+//             return;
+//         }
+//         rc = load_act_float(act_file, act_raw, K * 2);
+//         if (rc != 0) {
+//             fprintf(stderr, "load_act_float failed at M=%d K=%d rc=%d\n", M, K, rc);
+//             free(w); free(act_raw); free(act);
+//             free(dst_fp); free(dst_lut16); free(dst_lut1); free(dst_trad); free(dst_simd);
+//             return;
+//         }
+//         memcpy(act, act_raw, (size_t)K * 2 * sizeof(float));
 
-        block_ifairy_q16 *act_block_42 = alloc_act_block_ifairy_q16(K);
-        block_ifairy_q16 *act_block_127 = alloc_act_block_ifairy_q16(K);
-        lut_block *lut = alloc_lut_q8(K);
-        block_ifairy_1x3 *w_t = alloc_w(M, K);
+//         block_ifairy_q16 *act_block_42 = alloc_act_block_ifairy_q16(K);
+//         block_ifairy_q16 *act_block_127 = alloc_act_block_ifairy_q16(K);
+//         lut_block *lut = alloc_lut_q8(K);
+//         block_ifairy_1x3 *w_t = alloc_w(M, K);
 
-        int16_t *lut_v_old = alloc_lut_v_q16_old(K);
-        float *lut_scale_old = alloc_lut_scale_old(K);
-        block_ifairy_1x3_old *w_old = alloc_w_old(M, K);
+//         int16_t *lut_v_old = alloc_lut_v_q16_old(K);
+//         float *lut_scale_old = alloc_lut_scale_old(K);
+//         block_ifairy_1x3_old *w_old = alloc_w_old(M, K);
 
-        if (!act_block_42 || !act_block_127 || !lut || !w_t || !lut_v_old || !lut_scale_old || !w_old) {
-            fprintf(stderr, "tmp alloc failed at M=%d K=%d\n", M, K);
-            free(w); free(act_raw); free(act);
-            free(dst_fp); free(dst_lut16); free(dst_lut1); free(dst_trad); free(dst_simd);
-            free_act_block_ifairy_q16(act_block_42);
-            free_act_block_ifairy_q16(act_block_127);
-            free_lut_q8(lut);
-            free_w(w_t);
-            free_lut_v_q16_old(lut_v_old);
-            free_lut_scale_old(lut_scale_old);
-            free_w_old(w_old);
-            return;
-        }
+//         if (!act_block_42 || !act_block_127 || !lut || !w_t || !lut_v_old || !lut_scale_old || !w_old) {
+//             fprintf(stderr, "tmp alloc failed at M=%d K=%d\n", M, K);
+//             free(w); free(act_raw); free(act);
+//             free(dst_fp); free(dst_lut16); free(dst_lut1); free(dst_trad); free(dst_simd);
+//             free_act_block_ifairy_q16(act_block_42);
+//             free_act_block_ifairy_q16(act_block_127);
+//             free_lut_q8(lut);
+//             free_w(w_t);
+//             free_lut_v_q16_old(lut_v_old);
+//             free_lut_scale_old(lut_scale_old);
+//             free_w_old(w_old);
+//             return;
+//         }
 
-        // transpose 不计入 LUT 时间
-        transpose(M, K, w, w_t);
-        transpose_old(M, K, w, w_old);
+//         // transpose 不计入 LUT 时间
+//         transpose(M, K, w, w_t);
+//         transpose_old(M, K, w, w_old);
 
-        long long t0, t1;
-        double t_fp, t_lut16, t_lut1, t_trad, t_simd;
+//         long long t0, t1;
+//         double t_fp, t_lut16, t_lut1, t_trad, t_simd;
 
-        t0 = now_ns();
-        mul_mat_mxk_kx1(K, 0, M - 1, w, act, dst_fp);
-        t1 = now_ns();
-        t_fp = (double)(t1 - t0);
+//         t0 = now_ns();
+//         mul_mat_mxk_kx1(K, 0, M - 1, w, act, dst_fp);
+//         t1 = now_ns();
+//         t_fp = (double)(t1 - t0);
 
-        act_float_2_block_ifairy_q16(K, act, act_block_42, 42.6f);
-        t0 = now_ns();
-        generate_lut_q8_block_ifairy_q16(K, act_block_42, lut);
-        mul_mat_mxk_kx1_with_lut_q8(K, 0, M - 1, w_t, lut, dst_lut16);
-        t1 = now_ns();
-        t_lut16 = (double)(t1 - t0);
+//         act_float_2_block_ifairy_q16(K, act, act_block_42, 42.6f);
+//         t0 = now_ns();
+//         generate_lut_q8_block_ifairy_q16(K, act_block_42, lut);
+//         mul_mat_mxk_kx1_with_lut_q8(K, 0, M - 1, w_t, lut, dst_lut16);
+//         t1 = now_ns();
+//         t_lut16 = (double)(t1 - t0);
 
-        act_float_2_block_ifairy_q16(K, act, act_block_127, 127.0f);
-        t0 = now_ns();
-        generate_lut_q16_block_ifairy_q16_old(K, act_block_127, lut_v_old, lut_scale_old);
-        mul_mat_mxk_kx1_with_lut_q16_old(K, 0, M - 1, w_old, lut_v_old, lut_scale_old, dst_lut1);
-        t1 = now_ns();
-        t_lut1 = (double)(t1 - t0);
+//         act_float_2_block_ifairy_q16(K, act, act_block_127, 127.0f);
+//         t0 = now_ns();
+//         generate_lut_q16_block_ifairy_q16_old(K, act_block_127, lut_v_old, lut_scale_old);
+//         mul_mat_mxk_kx1_with_lut_q16_old(K, 0, M - 1, w_old, lut_v_old, lut_scale_old, dst_lut1);
+//         t1 = now_ns();
+//         t_lut1 = (double)(t1 - t0);
 
-        t0 = now_ns();
-        mul_mat_mxk_kx1_q8(K, 0, M - 1, w, act_block_127, dst_trad);
-        t1 = now_ns();
-        t_trad = (double)(t1 - t0);
+//         t0 = now_ns();
+//         mul_mat_mxk_kx1_q8(K, 0, M - 1, w, act_block_127, dst_trad);
+//         t1 = now_ns();
+//         t_trad = (double)(t1 - t0);
 
-        t0 = now_ns();
-        mul_mat_mxk_kx1_q8_simd(K, 0, M - 1, w, act_block_127, dst_simd);
-        t1 = now_ns();
-        t_simd = (double)(t1 - t0);
+//         t0 = now_ns();
+//         mul_mat_mxk_kx1_q8_simd(K, 0, M - 1, w, act_block_127, dst_simd);
+//         t1 = now_ns();
+//         t_simd = (double)(t1 - t0);
 
-        char mk[64];
-        snprintf(mk, sizeof(mk), "%d*%d", M, K);
-        printf("%-12s %-12.4f %-12.4f %-12.4f %-12.4f\n",
-                mk,
-                t_trad / t_fp,
-                t_trad / t_lut16,
-                t_trad / t_lut1,
-                t_trad / t_simd);
+//         char mk[64];
+//         snprintf(mk, sizeof(mk), "%d*%d", M, K);
+//         printf("%-12s %-12.4f %-12.4f %-12.4f %-12.4f\n",
+//                 mk,
+//                 t_trad / t_fp,
+//                 t_trad / t_lut16,
+//                 t_trad / t_lut1,
+//                 t_trad / t_simd);
 
-        free_act_block_ifairy_q16(act_block_42);
-        free_act_block_ifairy_q16(act_block_127);
-        free_lut_q8(lut);
-        free_w(w_t);
-        free_lut_v_q16_old(lut_v_old);
-        free_lut_scale_old(lut_scale_old);
-        free_w_old(w_old);
+//         free_act_block_ifairy_q16(act_block_42);
+//         free_act_block_ifairy_q16(act_block_127);
+//         free_lut_q8(lut);
+//         free_w(w_t);
+//         free_lut_v_q16_old(lut_v_old);
+//         free_lut_scale_old(lut_scale_old);
+//         free_w_old(w_old);
 
-        free(w); free(act_raw); free(act);
-        free(dst_fp); free(dst_lut16); free(dst_lut1); free(dst_trad); free(dst_simd);
-    }
-}
+//         free(w); free(act_raw); free(act);
+//         free(dst_fp); free(dst_lut16); free(dst_lut1); free(dst_trad); free(dst_simd);
+//     }
+// }
 
 
-void benchmark_metrics_vs_fp_from_file(const char *matrix_file, const char *act_file) {
-    const int test_cases[][2] = {
-        {16, 16},
-        {128, 128},
-        {512, 512},
-        {1536, 1024},
-        {1536, 2048},
-        {4096, 2048},
-        {4096, 4096},
-        {8192, 4096},
-        {8192, 8192},
-        {8192*2, 8192*2},
-    };
-    const int case_n = (int)(sizeof(test_cases) / sizeof(test_cases[0]));
+// void benchmark_metrics_vs_fp_from_file(const char *matrix_file, const char *act_file) {
+//     const int test_cases[][2] = {
+//         {16, 16},
+//         {128, 128},
+//         {512, 512},
+//         {1536, 1024},
+//         {1536, 2048},
+//         {4096, 2048},
+//         {4096, 4096},
+//         {8192, 4096},
+//         {8192, 8192},
+//         {8192*2, 8192*2},
+//     };
+//     const int case_n = (int)(sizeof(test_cases) / sizeof(test_cases[0]));
 
-    float mre_lut16[16] = {0}, mre_trad[16] = {0};
-    float xre_lut16[16] = {0}, xre_trad[16] = {0};
-    float cos_lut16[16] = {0}, cos_trad[16] = {0};
-    float snr_lut16[16] = {0}, snr_trad[16] = {0};
-    float acc01_lut16[16] = {0}, acc01_trad[16] = {0};
-    float maxmis_lut16[16] = {0}, maxmis_trad[16] = {0};
-    char dims[16][32];
+//     float mre_lut16[16] = {0}, mre_trad[16] = {0};
+//     float xre_lut16[16] = {0}, xre_trad[16] = {0};
+//     float cos_lut16[16] = {0}, cos_trad[16] = {0};
+//     float snr_lut16[16] = {0}, snr_trad[16] = {0};
+//     float acc01_lut16[16] = {0}, acc01_trad[16] = {0};
+//     float maxmis_lut16[16] = {0}, maxmis_trad[16] = {0};
+//     char dims[16][32];
 
-    printf("\n===== Metrics vs 全精度基准 =====\n");
-    printf("方法: 本文加速方法(LUT16) / 传统矩阵乘法(q8)\n");
+//     printf("\n===== Metrics vs 全精度基准 =====\n");
+//     printf("方法: 本文加速方法(LUT16) / 传统矩阵乘法(q8)\n");
 
-    for (int ci = 0; ci < case_n; ci++) {
-        M = test_cases[ci][0];
-        K = test_cases[ci][1];
+//     for (int ci = 0; ci < case_n; ci++) {
+//         M = test_cases[ci][0];
+//         K = test_cases[ci][1];
 
-        const int blk_n = (K + QK_K - 1) / QK_K;
-        const int act_pad_len = blk_n * QK_K * 2;
+//         const int blk_n = (K + QK_K - 1) / QK_K;
+//         const int act_pad_len = blk_n * QK_K * 2;
 
-        block_ifairy *w = calloc((size_t)M * blk_n, sizeof(block_ifairy));
-        float *act_raw = calloc((size_t)K * 2, sizeof(float));
-        float *act = calloc((size_t)act_pad_len, sizeof(float));
+//         block_ifairy *w = calloc((size_t)M * blk_n, sizeof(block_ifairy));
+//         float *act_raw = calloc((size_t)K * 2, sizeof(float));
+//         float *act = calloc((size_t)act_pad_len, sizeof(float));
 
-        float *dst_fp = calloc((size_t)M * 2, sizeof(float));
-        float *dst_lut16 = calloc((size_t)M * 2, sizeof(float));
-        float *dst_trad = calloc((size_t)M * 2, sizeof(float));
+//         float *dst_fp = calloc((size_t)M * 2, sizeof(float));
+//         float *dst_lut16 = calloc((size_t)M * 2, sizeof(float));
+//         float *dst_trad = calloc((size_t)M * 2, sizeof(float));
 
-        if (!w || !act_raw || !act || !dst_fp || !dst_lut16 || !dst_trad) {
-            fprintf(stderr, "OOM at case M=%d K=%d\n", M, K);
-            free(w); free(act_raw); free(act);
-            free(dst_fp); free(dst_lut16); free(dst_trad);
-            return;
-        }
+//         if (!w || !act_raw || !act || !dst_fp || !dst_lut16 || !dst_trad) {
+//             fprintf(stderr, "OOM at case M=%d K=%d\n", M, K);
+//             free(w); free(act_raw); free(act);
+//             free(dst_fp); free(dst_lut16); free(dst_trad);
+//             return;
+//         }
 
-        int rc = load_w_bit(matrix_file, w);
-        if (rc != 0) {
-            fprintf(stderr, "load_w_bit failed at M=%d K=%d rc=%d\n", M, K, rc);
-            free(w); free(act_raw); free(act);
-            free(dst_fp); free(dst_lut16); free(dst_trad);
-            return;
-        }
-        rc = load_act_float(act_file, act_raw, K * 2);
-        if (rc != 0) {
-            fprintf(stderr, "load_act_float failed at M=%d K=%d rc=%d\n", M, K, rc);
-            free(w); free(act_raw); free(act);
-            free(dst_fp); free(dst_lut16); free(dst_trad);
-            return;
-        }
-        memcpy(act, act_raw, (size_t)K * 2 * sizeof(float));
+//         int rc = load_w_bit(matrix_file, w);
+//         if (rc != 0) {
+//             fprintf(stderr, "load_w_bit failed at M=%d K=%d rc=%d\n", M, K, rc);
+//             free(w); free(act_raw); free(act);
+//             free(dst_fp); free(dst_lut16); free(dst_trad);
+//             return;
+//         }
+//         rc = load_act_float(act_file, act_raw, K * 2);
+//         if (rc != 0) {
+//             fprintf(stderr, "load_act_float failed at M=%d K=%d rc=%d\n", M, K, rc);
+//             free(w); free(act_raw); free(act);
+//             free(dst_fp); free(dst_lut16); free(dst_trad);
+//             return;
+//         }
+//         memcpy(act, act_raw, (size_t)K * 2 * sizeof(float));
 
-        block_ifairy_q16 *act_block_42 = alloc_act_block_ifairy_q16(K);
-        block_ifairy_q16 *act_block_127 = alloc_act_block_ifairy_q16(K);
-        lut_block *lut = alloc_lut_q8(K);
-        block_ifairy_1x3 *w_t = alloc_w(M, K);
+//         block_ifairy_q16 *act_block_42 = alloc_act_block_ifairy_q16(K);
+//         block_ifairy_q16 *act_block_127 = alloc_act_block_ifairy_q16(K);
+//         lut_block *lut = alloc_lut_q8(K);
+//         block_ifairy_1x3 *w_t = alloc_w(M, K);
 
-        if (!act_block_42 || !act_block_127 || !lut || !w_t) {
-            fprintf(stderr, "tmp alloc failed at M=%d K=%d\n", M, K);
-            free(w); free(act_raw); free(act);
-            free(dst_fp); free(dst_lut16); free(dst_trad);
-            free_act_block_ifairy_q16(act_block_42);
-            free_act_block_ifairy_q16(act_block_127);
-            free_lut_q8(lut);
-            free_w(w_t);
-            return;
-        }
+//         if (!act_block_42 || !act_block_127 || !lut || !w_t) {
+//             fprintf(stderr, "tmp alloc failed at M=%d K=%d\n", M, K);
+//             free(w); free(act_raw); free(act);
+//             free(dst_fp); free(dst_lut16); free(dst_trad);
+//             free_act_block_ifairy_q16(act_block_42);
+//             free_act_block_ifairy_q16(act_block_127);
+//             free_lut_q8(lut);
+//             free_w(w_t);
+//             return;
+//         }
 
-        // 全精度基准
-        mul_mat_mxk_kx1(K, 0, M - 1, w, act, dst_fp);
+//         // 全精度基准
+//         mul_mat_mxk_kx1(K, 0, M - 1, w, act, dst_fp);
 
-        // 本文加速方法（LUT16）
-        transpose(M, K, w, w_t);
-        act_float_2_block_ifairy_q16(K, act, act_block_42, 42.6f);
-        generate_lut_q8_block_ifairy_q16(K, act_block_42, lut);
-        mul_mat_mxk_kx1_with_lut_q8(K, 0, M - 1, w_t, lut, dst_lut16);
+//         // 本文加速方法（LUT16）
+//         transpose(M, K, w, w_t);
+//         act_float_2_block_ifairy_q16(K, act, act_block_42, 42.6f);
+//         generate_lut_q8_block_ifairy_q16(K, act_block_42, lut);
+//         mul_mat_mxk_kx1_with_lut_q8(K, 0, M - 1, w_t, lut, dst_lut16);
 
-        // 传统矩阵乘法（q8）
-        act_float_2_block_ifairy_q16(K, act, act_block_127, 127.0f);
-        mul_mat_mxk_kx1_q8(K, 0, M - 1, w, act_block_127, dst_trad);
+//         // 传统矩阵乘法（q8）
+//         act_float_2_block_ifairy_q16(K, act, act_block_127, 127.0f);
+//         mul_mat_mxk_kx1_q8(K, 0, M - 1, w, act_block_127, dst_trad);
 
-        float mre_lut16_vs_ref = mean_relative_error_vs_ref(dst_lut16, dst_fp);
-        float mre_trad_vs_ref = mean_relative_error_vs_ref(dst_trad, dst_fp);
-        float xre_lut16_vs_ref = max_relative_error_vs_ref(dst_lut16, dst_fp);
-        float xre_trad_vs_ref = max_relative_error_vs_ref(dst_trad, dst_fp);
-        float cos_lut16_vs_ref = cosine_similarity_vs_ref(dst_lut16, dst_fp);
-        float cos_trad_vs_ref = cosine_similarity_vs_ref(dst_trad, dst_fp);
-        float snr_lut16_vs_ref = snr_db_vs_ref(dst_lut16, dst_fp);
-        float snr_trad_vs_ref = snr_db_vs_ref(dst_trad, dst_fp);
+//         float mre_lut16_vs_ref = mean_relative_error_vs_ref(dst_lut16, dst_fp);
+//         float mre_trad_vs_ref = mean_relative_error_vs_ref(dst_trad, dst_fp);
+//         float xre_lut16_vs_ref = max_relative_error_vs_ref(dst_lut16, dst_fp);
+//         float xre_trad_vs_ref = max_relative_error_vs_ref(dst_trad, dst_fp);
+//         float cos_lut16_vs_ref = cosine_similarity_vs_ref(dst_lut16, dst_fp);
+//         float cos_trad_vs_ref = cosine_similarity_vs_ref(dst_trad, dst_fp);
+//         float snr_lut16_vs_ref = snr_db_vs_ref(dst_lut16, dst_fp);
+//         float snr_trad_vs_ref = snr_db_vs_ref(dst_trad, dst_fp);
 
-        int errors_lut16 = 0;
-        float max_mismatch_lut16 = 0.0f;
-        int errors_trad = 0;
-        float max_mismatch_trad = 0.0f;
-        for (int i = 0; i < M * 2; i++) {
-            float mismatch_lut16 = fabsf(dst_fp[i] - dst_lut16[i]) / (fabsf(dst_fp[i]) + 1e-9f);
-            if (mismatch_lut16 > 0.1f) {
-                if (mismatch_lut16 > max_mismatch_lut16) {
-                    max_mismatch_lut16 = mismatch_lut16;
-                }
-                errors_lut16++;
-            }
+//         int errors_lut16 = 0;
+//         float max_mismatch_lut16 = 0.0f;
+//         int errors_trad = 0;
+//         float max_mismatch_trad = 0.0f;
+//         for (int i = 0; i < M * 2; i++) {
+//             float mismatch_lut16 = fabsf(dst_fp[i] - dst_lut16[i]) / (fabsf(dst_fp[i]) + 1e-9f);
+//             if (mismatch_lut16 > 0.1f) {
+//                 if (mismatch_lut16 > max_mismatch_lut16) {
+//                     max_mismatch_lut16 = mismatch_lut16;
+//                 }
+//                 errors_lut16++;
+//             }
 
-            float mismatch_trad = fabsf(dst_fp[i] - dst_trad[i]) / (fabsf(dst_fp[i]) + 1e-9f);
-            if (mismatch_trad > 0.1f) {
-                if (mismatch_trad > max_mismatch_trad) {
-                    max_mismatch_trad = mismatch_trad;
-                }
-                errors_trad++;
-            }
-        }
-        float acc01_lut16_vs_ref = ((float)M * 2.0f - (float)errors_lut16) / ((float)M * 2.0f);
-        float acc01_trad_vs_ref = ((float)M * 2.0f - (float)errors_trad) / ((float)M * 2.0f);
+//             float mismatch_trad = fabsf(dst_fp[i] - dst_trad[i]) / (fabsf(dst_fp[i]) + 1e-9f);
+//             if (mismatch_trad > 0.1f) {
+//                 if (mismatch_trad > max_mismatch_trad) {
+//                     max_mismatch_trad = mismatch_trad;
+//                 }
+//                 errors_trad++;
+//             }
+//         }
+//         float acc01_lut16_vs_ref = ((float)M * 2.0f - (float)errors_lut16) / ((float)M * 2.0f);
+//         float acc01_trad_vs_ref = ((float)M * 2.0f - (float)errors_trad) / ((float)M * 2.0f);
 
-        snprintf(dims[ci], sizeof(dims[ci]), "%d*%d", M, K);
-        mre_lut16[ci] = mre_lut16_vs_ref;
-        mre_trad[ci] = mre_trad_vs_ref;
-        xre_lut16[ci] = xre_lut16_vs_ref;
-        xre_trad[ci] = xre_trad_vs_ref;
-        cos_lut16[ci] = cos_lut16_vs_ref;
-        cos_trad[ci] = cos_trad_vs_ref;
-        snr_lut16[ci] = snr_lut16_vs_ref;
-        snr_trad[ci] = snr_trad_vs_ref;
-        acc01_lut16[ci] = acc01_lut16_vs_ref;
-        acc01_trad[ci] = acc01_trad_vs_ref;
-        maxmis_lut16[ci] = max_mismatch_lut16;
-        maxmis_trad[ci] = max_mismatch_trad;
+//         snprintf(dims[ci], sizeof(dims[ci]), "%d*%d", M, K);
+//         mre_lut16[ci] = mre_lut16_vs_ref;
+//         mre_trad[ci] = mre_trad_vs_ref;
+//         xre_lut16[ci] = xre_lut16_vs_ref;
+//         xre_trad[ci] = xre_trad_vs_ref;
+//         cos_lut16[ci] = cos_lut16_vs_ref;
+//         cos_trad[ci] = cos_trad_vs_ref;
+//         snr_lut16[ci] = snr_lut16_vs_ref;
+//         snr_trad[ci] = snr_trad_vs_ref;
+//         acc01_lut16[ci] = acc01_lut16_vs_ref;
+//         acc01_trad[ci] = acc01_trad_vs_ref;
+//         maxmis_lut16[ci] = max_mismatch_lut16;
+//         maxmis_trad[ci] = max_mismatch_trad;
 
-        free_act_block_ifairy_q16(act_block_42);
-        free_act_block_ifairy_q16(act_block_127);
-        free_lut_q8(lut);
-        free_w(w_t);
+//         free_act_block_ifairy_q16(act_block_42);
+//         free_act_block_ifairy_q16(act_block_127);
+//         free_lut_q8(lut);
+//         free_w(w_t);
 
-        free(w); free(act_raw); free(act);
-        free(dst_fp); free(dst_lut16); free(dst_trad);
-    }
+//         free(w); free(act_raw); free(act);
+//         free(dst_fp); free(dst_lut16); free(dst_trad);
+//     }
 
-    printf("\n--- 平均相对误差(MRE) ---\n");
-    printf("%-20s", "方法\\维度");
-    for (int i = 0; i < case_n; i++) printf(" %-12s", dims[i]);
-    printf("\n");
-    printf("%-20s", "本文方法");
-    for (int i = 0; i < case_n; i++) printf(" %-12.6f", mre_lut16[i]);
-    printf("\n");
-    printf("%-20s", "传统矩阵方法");
-    for (int i = 0; i < case_n; i++) printf(" %-12.6f", mre_trad[i]);
-    printf("\n");
+//     printf("\n--- 平均相对误差(MRE) ---\n");
+//     printf("%-20s", "方法\\维度");
+//     for (int i = 0; i < case_n; i++) printf(" %-12s", dims[i]);
+//     printf("\n");
+//     printf("%-20s", "本文方法");
+//     for (int i = 0; i < case_n; i++) printf(" %-12.6f", mre_lut16[i]);
+//     printf("\n");
+//     printf("%-20s", "传统矩阵方法");
+//     for (int i = 0; i < case_n; i++) printf(" %-12.6f", mre_trad[i]);
+//     printf("\n");
 
-    printf("\n--- 最大相对误差(XRE) ---\n");
-    printf("%-20s", "方法\\维度");
-    for (int i = 0; i < case_n; i++) printf(" %-12s", dims[i]);
-    printf("\n");
-    printf("%-20s", "本文方法");
-    for (int i = 0; i < case_n; i++) printf(" %-12.6f", xre_lut16[i]);
-    printf("\n");
-    printf("%-20s", "传统矩阵方法");
-    for (int i = 0; i < case_n; i++) printf(" %-12.6f", xre_trad[i]);
-    printf("\n");
+//     printf("\n--- 最大相对误差(XRE) ---\n");
+//     printf("%-20s", "方法\\维度");
+//     for (int i = 0; i < case_n; i++) printf(" %-12s", dims[i]);
+//     printf("\n");
+//     printf("%-20s", "本文方法");
+//     for (int i = 0; i < case_n; i++) printf(" %-12.6f", xre_lut16[i]);
+//     printf("\n");
+//     printf("%-20s", "传统矩阵方法");
+//     for (int i = 0; i < case_n; i++) printf(" %-12.6f", xre_trad[i]);
+//     printf("\n");
 
-    printf("\n--- 余弦相似度(Cosine) ---\n");
-    printf("%-20s", "方法\\维度");
-    for (int i = 0; i < case_n; i++) printf(" %-12s", dims[i]);
-    printf("\n");
-    printf("%-20s", "本文方法");
-    for (int i = 0; i < case_n; i++) printf(" %-12.6f", cos_lut16[i]);
-    printf("\n");
-    printf("%-20s", "传统矩阵方法");
-    for (int i = 0; i < case_n; i++) printf(" %-12.6f", cos_trad[i]);
-    printf("\n");
+//     printf("\n--- 余弦相似度(Cosine) ---\n");
+//     printf("%-20s", "方法\\维度");
+//     for (int i = 0; i < case_n; i++) printf(" %-12s", dims[i]);
+//     printf("\n");
+//     printf("%-20s", "本文方法");
+//     for (int i = 0; i < case_n; i++) printf(" %-12.6f", cos_lut16[i]);
+//     printf("\n");
+//     printf("%-20s", "传统矩阵方法");
+//     for (int i = 0; i < case_n; i++) printf(" %-12.6f", cos_trad[i]);
+//     printf("\n");
 
-    printf("\n--- 信噪比SNR(dB) ---\n");
-    printf("%-20s", "方法\\维度");
-    for (int i = 0; i < case_n; i++) printf(" %-12s", dims[i]);
-    printf("\n");
-    printf("%-20s", "本文方法");
-    for (int i = 0; i < case_n; i++) printf(" %-12.6f", snr_lut16[i]);
-    printf("\n");
-    printf("%-20s", "传统矩阵方法");
-    for (int i = 0; i < case_n; i++) printf(" %-12.6f", snr_trad[i]);
-    printf("\n");
+//     printf("\n--- 信噪比SNR(dB) ---\n");
+//     printf("%-20s", "方法\\维度");
+//     for (int i = 0; i < case_n; i++) printf(" %-12s", dims[i]);
+//     printf("\n");
+//     printf("%-20s", "本文方法");
+//     for (int i = 0; i < case_n; i++) printf(" %-12.6f", snr_lut16[i]);
+//     printf("\n");
+//     printf("%-20s", "传统矩阵方法");
+//     for (int i = 0; i < case_n; i++) printf(" %-12.6f", snr_trad[i]);
+//     printf("\n");
 
-    printf("\n--- 0.1 Accuracy ---\n");
-    printf("%-20s", "方法\\维度");
-    for (int i = 0; i < case_n; i++) printf(" %-12s", dims[i]);
-    printf("\n");
-    printf("%-20s", "本文方法");
-    for (int i = 0; i < case_n; i++) printf(" %-12.6f", acc01_lut16[i]);
-    printf("\n");
-    printf("%-20s", "传统矩阵方法");
-    for (int i = 0; i < case_n; i++) printf(" %-12.6f", acc01_trad[i]);
-    printf("\n");
+//     printf("\n--- 0.1 Accuracy ---\n");
+//     printf("%-20s", "方法\\维度");
+//     for (int i = 0; i < case_n; i++) printf(" %-12s", dims[i]);
+//     printf("\n");
+//     printf("%-20s", "本文方法");
+//     for (int i = 0; i < case_n; i++) printf(" %-12.6f", acc01_lut16[i]);
+//     printf("\n");
+//     printf("%-20s", "传统矩阵方法");
+//     for (int i = 0; i < case_n; i++) printf(" %-12.6f", acc01_trad[i]);
+//     printf("\n");
 
-    printf("\n--- Max Mismatch ---\n");
-    printf("%-20s", "方法\\维度");
-    for (int i = 0; i < case_n; i++) printf(" %-12s", dims[i]);
-    printf("\n");
-    printf("%-20s", "本文方法");
-    for (int i = 0; i < case_n; i++) printf(" %-12.6f", maxmis_lut16[i]);
-    printf("\n");
-    printf("%-20s", "传统矩阵方法");
-    for (int i = 0; i < case_n; i++) printf(" %-12.6f", maxmis_trad[i]);
-    printf("\n");
-}
+//     printf("\n--- Max Mismatch ---\n");
+//     printf("%-20s", "方法\\维度");
+//     for (int i = 0; i < case_n; i++) printf(" %-12s", dims[i]);
+//     printf("\n");
+//     printf("%-20s", "本文方法");
+//     for (int i = 0; i < case_n; i++) printf(" %-12.6f", maxmis_lut16[i]);
+//     printf("\n");
+//     printf("%-20s", "传统矩阵方法");
+//     for (int i = 0; i < case_n; i++) printf(" %-12.6f", maxmis_trad[i]);
+//     printf("\n");
+// }
 
-void sample(const block_ifairy *w, const float *act) {
-    float *dst2 = calloc(K*2, sizeof(float));
-    lut_block *lut = alloc_lut_q8(M);
-    block_ifairy_1x3 *_w = alloc_w(M, K);
-    transpose(M, K, w, _w);
-    while(1) {
-        generate_lut_q8(M, act, lut);
-        mul_mat_mxk_kx1_with_lut_q8(K, 0, M-1, _w, lut, dst2);
-    }
-    free_w(_w);
-    free_lut_q8(lut);
-    free(dst2);
-}
 
 int main(int argc, char *argv[]) {
-    if (argc == 2 && strcmp(argv[1], "bench") == 0) {
-        benchmark_speedup_from_file("./test_data/w.txt", "./test_data/act.txt");
-        return 0;
-    }
-    if (argc == 2 && strcmp(argv[1], "metrics") == 0) {
-        benchmark_metrics_vs_fp_from_file("./test_data/w.txt", "./test_data/act.txt");
-        return 0;
-    }
+    // if (argc == 2 && strcmp(argv[1], "bench") == 0) {
+    //     benchmark_speedup_from_file("./test_data/w.txt", "./test_data/act.txt");
+    //     return 0;
+    // }
+    // if (argc == 2 && strcmp(argv[1], "metrics") == 0) {
+    //     benchmark_metrics_vs_fp_from_file("./test_data/w.txt", "./test_data/act.txt");
+    //     return 0;
+    // }
 
     if (argc != 3) {
         return -1;
@@ -821,11 +808,10 @@ int main(int argc, char *argv[]) {
     if (rc != 0) { fprintf(stderr, "Failed to read matrix (%d)\n", rc); free(w); return 2; }
     rc = load_act_float(act_file, act, K*2);
     if (rc != 0) { fprintf(stderr, "Failed to read act (%d)\n", rc); free(w); return 2; }
-    // compare(w, act);
-    // sample(w, act);
+    compare(w, act);
     free(w);
     free(act);
     // benchmark_speedup_from_file(matrix_file, act_file);
-    benchmark_metrics_vs_fp_from_file(matrix_file, act_file);
+    // benchmark_metrics_vs_fp_from_file(matrix_file, act_file);
     return 0;
 }

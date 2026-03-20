@@ -109,7 +109,7 @@ static const uint8_t three_vals2index_uint8[64] = {
 };
 
 
-void generate_lut_q8(int k, const float *act, lut_block *lut) {
+void generate_lut_q8(int k, const float *act, lut_block *lut_hi, lut_block *lut_lo, const float scale) {
     const int _blk_n = (k+QK_K-1)/QK_K;
     for (int _blk = 0; _blk < _blk_n; _blk++) {
         int _act_begin = _blk * QK_K * 2, _act_end = ((_blk+1)*QK_K-1)*2 < k*2 ? (_blk+1)*QK_K*2-1 : k*2;
@@ -121,332 +121,298 @@ void generate_lut_q8(int k, const float *act, lut_block *lut) {
             if (_real > _max_real) _max_real = _real;
             if (_imag > _max_imag) _max_imag = _imag;
         }
-        float _scale_real = _max_real / 42.6f;
-        float _scale_imag = _max_imag / 42.6f;
-        lut[_blk].d_real = _scale_real;
-        lut[_blk].d_imag = _scale_imag;
+        float _scale_real = _max_real / scale;
+        float _scale_imag = _max_imag / scale;
+        lut_hi[_blk].d_real = _scale_real;
+        lut_hi[_blk].d_imag = _scale_imag;
+        lut_lo[_blk].d_real = _scale_real;
+        lut_lo[_blk].d_imag = _scale_imag;
         float _inv_scale_real = 1.0f / _scale_real;
         float _inv_scale_imag = 1.0f / _scale_imag;
         
         // 生成lut表
         for (int _i = _act_begin; _i <= _act_end; _i += 6) {
-            int8_t _r0, _r1, _r2, _i0, _i1, _i2;
+            int16_t _r0, _r1, _r2, _i0, _i1, _i2;
             if (_i+6 > _act_end) {
-                _r0 = (int8_t)roundf(act[_i]    * _inv_scale_real);
-                _i0 = (int8_t)roundf(-act[_i+1] * _inv_scale_imag);
+                _r0 = (int16_t)roundf(act[_i]    * _inv_scale_real);
+                _i0 = (int16_t)roundf(-act[_i+1] * _inv_scale_imag);
                 _r1 = 0;
                 _i1 = 0;
                 _r2 = 0;
                 _i2 = 0;
             } else {
-                _r0 = (int8_t)roundf(act[_i]    * _inv_scale_real);
-                _i0 = (int8_t)roundf(-act[_i+1] * _inv_scale_imag);
-                _r1 = (int8_t)roundf(act[_i+2]  * _inv_scale_real);
-                _i1 = (int8_t)roundf(-act[_i+3] * _inv_scale_imag);
-                _r2 = (int8_t)roundf(act[_i+4]  * _inv_scale_real);
-                _i2 = (int8_t)roundf(-act[_i+5] * _inv_scale_imag);
+                _r0 = (int16_t)roundf(act[_i]    * _inv_scale_real);
+                _i0 = (int16_t)roundf(-act[_i+1] * _inv_scale_imag);
+                _r1 = (int16_t)roundf(act[_i+2]  * _inv_scale_real);
+                _i1 = (int16_t)roundf(-act[_i+3] * _inv_scale_imag);
+                _r2 = (int16_t)roundf(act[_i+4]  * _inv_scale_real);
+                _i2 = (int16_t)roundf(-act[_i+5] * _inv_scale_imag);
             }
 
-            int8x16_t _ac = {
-                -_r0 - _r1 - _r2,
-                -_r0 - _r1 + _r2,
-                -_r0 - _r1,
-                -_r0 - _r1,
+            int16_t _ac16[16] = {
+                (int16_t)(-_r0 - _r1 - _r2),
+                (int16_t)(-_r0 - _r1 + _r2),
+                (int16_t)(-_r0 - _r1),
+                (int16_t)(-_r0 - _r1),
 
-                -_r0 + _r1 - _r2,
-                -_r0 + _r1 + _r2,
-                -_r0 + _r1,
-                -_r0 + _r1,
+                (int16_t)(-_r0 + _r1 - _r2),
+                (int16_t)(-_r0 + _r1 + _r2),
+                (int16_t)(-_r0 + _r1),
+                (int16_t)(-_r0 + _r1),
 
-                -_r0 - _r2,
-                -_r0 + _r2,
-                -_r0,
-                -_r0,
+                (int16_t)(-_r0 - _r2),
+                (int16_t)(-_r0 + _r2),
+                (int16_t)(-_r0),
+                (int16_t)(-_r0),
 
-                -_r0 - _r2,
-                -_r0 + _r2,
-                -_r0,
-                -_r0,
+                (int16_t)(-_r0 - _r2),
+                (int16_t)(-_r0 + _r2),
+                (int16_t)(-_r0),
+                (int16_t)(-_r0),
             };
 
-            int8x16_t _bd = {
+            int16_t _bd16[16] = {
                 0,
                 0,
-                -_i2,
-                _i2,
+                (int16_t)(-_i2),
+                (int16_t)(_i2),
 
                 0,
                 0,
-                -_i2,
-                _i2,
+                (int16_t)(-_i2),
+                (int16_t)(_i2),
 
-                -_i1,
-                -_i1,
-                -_i1 - _i2,
-                -_i1 + _i2,
+                (int16_t)(-_i1),
+                (int16_t)(-_i1),
+                (int16_t)(-_i1 - _i2),
+                (int16_t)(-_i1 + _i2),
 
-                _i1,
-                _i1,
-                _i1 - _i2,
-                _i1 + _i2,
+                (int16_t)(_i1),
+                (int16_t)(_i1),
+                (int16_t)(_i1 - _i2),
+                (int16_t)(_i1 + _i2),
             };
 
-            int8x16_t _ad = {
+            int16_t _ad16[16] = {
                 0,
                 0,
-                -_r2,
-                _r2,
+                (int16_t)(-_r2),
+                (int16_t)(_r2),
 
                 0,
                 0,
-                -_r2,
-                _r2,
+                (int16_t)(-_r2),
+                (int16_t)(_r2),
 
-                -_r1,
-                -_r1,
-                -_r1 - _r2,
-                -_r1 + _r2,
+                (int16_t)(-_r1),
+                (int16_t)(-_r1),
+                (int16_t)(-_r1 - _r2),
+                (int16_t)(-_r1 + _r2),
 
-                _r1,
-                _r1,
-                _r1 - _r2,
-                _r1 + _r2,
-            };
-            
-            int8x16_t _bc = {
-                -_i0 - _i1 - _i2,
-                -_i0 - _i1 + _i2,
-                -_i0 - _i1,
-                -_i0 - _i1,
-
-                -_i0 + _i1 - _i2,
-                -_i0 + _i1 + _i2,
-                -_i0 + _i1,
-                -_i0 + _i1,
-
-                -_i0 - _i2,
-                -_i0 + _i2,
-                -_i0,
-                -_i0,
-
-                -_i0 - _i2,
-                -_i0 + _i2,
-                -_i0,
-                -_i0,
+                (int16_t)(_r1),
+                (int16_t)(_r1),
+                (int16_t)(_r1 - _r2),
+                (int16_t)(_r1 + _r2),
             };
 
-            lut[_blk].v[(_i-_act_begin)/6] = (int8x16x4_t){.val = _ac, _bd, _ad, _bc};
+            int16_t _bc16[16] = {
+                (int16_t)(-_i0 - _i1 - _i2),
+                (int16_t)(-_i0 - _i1 + _i2),
+                (int16_t)(-_i0 - _i1),
+                (int16_t)(-_i0 - _i1),
+
+                (int16_t)(-_i0 + _i1 - _i2),
+                (int16_t)(-_i0 + _i1 + _i2),
+                (int16_t)(-_i0 + _i1),
+                (int16_t)(-_i0 + _i1),
+
+                (int16_t)(-_i0 - _i2),
+                (int16_t)(-_i0 + _i2),
+                (int16_t)(-_i0),
+                (int16_t)(-_i0),
+
+                (int16_t)(-_i0 - _i2),
+                (int16_t)(-_i0 + _i2),
+                (int16_t)(-_i0),
+                (int16_t)(-_i0),
+            };
+
+            int8_t _ac_hi_arr[16], _bd_hi_arr[16], _ad_hi_arr[16], _bc_hi_arr[16];
+            int8_t _ac_lo_arr[16], _bd_lo_arr[16], _ad_lo_arr[16], _bc_lo_arr[16];
+            for (int _j = 0; _j < 16; _j++) {
+                _ac_hi_arr[_j] = (int8_t)(((uint16_t)_ac16[_j]) >> 8);
+                _bd_hi_arr[_j] = (int8_t)(((uint16_t)_bd16[_j]) >> 8);
+                _ad_hi_arr[_j] = (int8_t)(((uint16_t)_ad16[_j]) >> 8);
+                _bc_hi_arr[_j] = (int8_t)(((uint16_t)_bc16[_j]) >> 8);
+
+                _ac_lo_arr[_j] = (int8_t)(((uint16_t)_ac16[_j]) & 0xFF);
+                _bd_lo_arr[_j] = (int8_t)(((uint16_t)_bd16[_j]) & 0xFF);
+                _ad_lo_arr[_j] = (int8_t)(((uint16_t)_ad16[_j]) & 0xFF);
+                _bc_lo_arr[_j] = (int8_t)(((uint16_t)_bc16[_j]) & 0xFF);
+            }
+
+            int8x16x4_t _lut_hi_item;
+            _lut_hi_item.val[0] = vld1q_s8(_ac_hi_arr);
+            _lut_hi_item.val[1] = vld1q_s8(_bd_hi_arr);
+            _lut_hi_item.val[2] = vld1q_s8(_ad_hi_arr);
+            _lut_hi_item.val[3] = vld1q_s8(_bc_hi_arr);
+
+            int8x16x4_t _lut_lo_item;
+            _lut_lo_item.val[0] = vld1q_s8(_ac_lo_arr);
+            _lut_lo_item.val[1] = vld1q_s8(_bd_lo_arr);
+            _lut_lo_item.val[2] = vld1q_s8(_ad_lo_arr);
+            _lut_lo_item.val[3] = vld1q_s8(_bc_lo_arr);
+
+            lut_hi[_blk].v[(_i-_act_begin)/6] = _lut_hi_item;
+            lut_lo[_blk].v[(_i-_act_begin)/6] = _lut_lo_item;
         }
 
     }
 }
 
 
-void generate_lut_q8_block_ifairy_q16(int k, const block_ifairy_q16 *act, lut_block *lut) {
+void generate_lut_q8_block_ifairy_q16(int k, const block_ifairy_q16 *act, lut_block *lut_hi, lut_block *lut_lo) {
     const int _blk_n = (k+QK_K-1)/QK_K;
     for (int _blk = 0; _blk < _blk_n; _blk++) {
-        lut[_blk].d_real = act[_blk].d_real;
-        lut[_blk].d_imag = act[_blk].d_imag;
-        int8_t _r0, _i0, _r1, _i1, _r2, _i2;
-        int _i = 0;
-        for (; _i+3 < QK_K; _i+=3) {
-            
-            _r0 = (int8_t) act[_blk].x_real[_i  ];
-            _i0 = (int8_t)-act[_blk].x_imag[_i  ];
-            _r1 = (int8_t) act[_blk].x_real[_i+1];
-            _i1 = (int8_t)-act[_blk].x_imag[_i+1];
-            _r2 = (int8_t) act[_blk].x_real[_i+2];
-            _i2 = (int8_t)-act[_blk].x_imag[_i+2];
-            
+        lut_hi[_blk].d_real = act[_blk].d_real;
+        lut_hi[_blk].d_imag = act[_blk].d_imag;
+        lut_lo[_blk].d_real = act[_blk].d_real;
+        lut_lo[_blk].d_imag = act[_blk].d_imag;
 
-            int8x16_t _ac = {
-                -_r0 - _r1 - _r2,
-                -_r0 - _r1 + _r2,
-                -_r0 - _r1,
-                -_r0 - _r1,
+        for (int _i = 0; _i < QK_K; _i += 3) {
+            int8_t _r0 = (int8_t)act[_blk].x_real[_i];
+            int8_t _i0 = (int8_t)-act[_blk].x_imag[_i];
+            int8_t _r1 = 0;
+            int8_t _i1 = 0;
+            int8_t _r2 = 0;
+            int8_t _i2 = 0;
 
-                -_r0 + _r1 - _r2,
-                -_r0 + _r1 + _r2,
-                -_r0 + _r1,
-                -_r0 + _r1,
+            if (_i + 1 < QK_K) {
+                _r1 = (int8_t)act[_blk].x_real[_i + 1];
+                _i1 = (int8_t)-act[_blk].x_imag[_i + 1];
+            }
+            if (_i + 2 < QK_K) {
+                _r2 = (int8_t)act[_blk].x_real[_i + 2];
+                _i2 = (int8_t)-act[_blk].x_imag[_i + 2];
+            }
 
-                -_r0 - _r2,
-                -_r0 + _r2,
-                -_r0,
-                -_r0,
+            int16_t _ac16[16] = {
+                (int16_t)(-_r0 - _r1 - _r2),
+                (int16_t)(-_r0 - _r1 + _r2),
+                (int16_t)(-_r0 - _r1),
+                (int16_t)(-_r0 - _r1),
 
-                -_r0 - _r2,
-                -_r0 + _r2,
-                -_r0,
-                -_r0,
+                (int16_t)(-_r0 + _r1 - _r2),
+                (int16_t)(-_r0 + _r1 + _r2),
+                (int16_t)(-_r0 + _r1),
+                (int16_t)(-_r0 + _r1),
+
+                (int16_t)(-_r0 - _r2),
+                (int16_t)(-_r0 + _r2),
+                (int16_t)(-_r0),
+                (int16_t)(-_r0),
+
+                (int16_t)(-_r0 - _r2),
+                (int16_t)(-_r0 + _r2),
+                (int16_t)(-_r0),
+                (int16_t)(-_r0),
             };
 
-            int8x16_t _bd = {
+            int16_t _bd16[16] = {
                 0,
                 0,
-                -_i2,
-                _i2,
+                (int16_t)(-_i2),
+                (int16_t)(_i2),
 
                 0,
                 0,
-                -_i2,
-                _i2,
+                (int16_t)(-_i2),
+                (int16_t)(_i2),
 
-                -_i1,
-                -_i1,
-                -_i1 - _i2,
-                -_i1 + _i2,
+                (int16_t)(-_i1),
+                (int16_t)(-_i1),
+                (int16_t)(-_i1 - _i2),
+                (int16_t)(-_i1 + _i2),
 
-                _i1,
-                _i1,
-                _i1 - _i2,
-                _i1 + _i2,
+                (int16_t)(_i1),
+                (int16_t)(_i1),
+                (int16_t)(_i1 - _i2),
+                (int16_t)(_i1 + _i2),
             };
 
-            int8x16_t _ad = {
+            int16_t _ad16[16] = {
                 0,
                 0,
-                -_r2,
-                _r2,
+                (int16_t)(-_r2),
+                (int16_t)(_r2),
 
                 0,
                 0,
-                -_r2,
-                _r2,
+                (int16_t)(-_r2),
+                (int16_t)(_r2),
 
-                -_r1,
-                -_r1,
-                -_r1 - _r2,
-                -_r1 + _r2,
+                (int16_t)(-_r1),
+                (int16_t)(-_r1),
+                (int16_t)(-_r1 - _r2),
+                (int16_t)(-_r1 + _r2),
 
-                _r1,
-                _r1,
-                _r1 - _r2,
-                _r1 + _r2,
-            };
-            
-            int8x16_t _bc = {
-                -_i0 - _i1 - _i2,
-                -_i0 - _i1 + _i2,
-                -_i0 - _i1,
-                -_i0 - _i1,
-
-                -_i0 + _i1 - _i2,
-                -_i0 + _i1 + _i2,
-                -_i0 + _i1,
-                -_i0 + _i1,
-
-                -_i0 - _i2,
-                -_i0 + _i2,
-                -_i0,
-                -_i0,
-
-                -_i0 - _i2,
-                -_i0 + _i2,
-                -_i0,
-                -_i0,
+                (int16_t)(_r1),
+                (int16_t)(_r1),
+                (int16_t)(_r1 - _r2),
+                (int16_t)(_r1 + _r2),
             };
 
-            lut[_blk].v[_i/3] = (int8x16x4_t){.val= _ac, _bd, _ad, _bc};
+            int16_t _bc16[16] = {
+                (int16_t)(-_i0 - _i1 - _i2),
+                (int16_t)(-_i0 - _i1 + _i2),
+                (int16_t)(-_i0 - _i1),
+                (int16_t)(-_i0 - _i1),
+
+                (int16_t)(-_i0 + _i1 - _i2),
+                (int16_t)(-_i0 + _i1 + _i2),
+                (int16_t)(-_i0 + _i1),
+                (int16_t)(-_i0 + _i1),
+
+                (int16_t)(-_i0 - _i2),
+                (int16_t)(-_i0 + _i2),
+                (int16_t)(-_i0),
+                (int16_t)(-_i0),
+
+                (int16_t)(-_i0 - _i2),
+                (int16_t)(-_i0 + _i2),
+                (int16_t)(-_i0),
+                (int16_t)(-_i0),
+            };
+
+            int8_t _ac_hi_arr[16], _bd_hi_arr[16], _ad_hi_arr[16], _bc_hi_arr[16];
+            int8_t _ac_lo_arr[16], _bd_lo_arr[16], _ad_lo_arr[16], _bc_lo_arr[16];
+            for (int _j = 0; _j < 16; _j++) {
+                _ac_hi_arr[_j] = (int8_t)(((uint16_t)_ac16[_j]) >> 8);
+                _bd_hi_arr[_j] = (int8_t)(((uint16_t)_bd16[_j]) >> 8);
+                _ad_hi_arr[_j] = (int8_t)(((uint16_t)_ad16[_j]) >> 8);
+                _bc_hi_arr[_j] = (int8_t)(((uint16_t)_bc16[_j]) >> 8);
+
+                _ac_lo_arr[_j] = (int8_t)(((uint16_t)_ac16[_j]) & 0xFF);
+                _bd_lo_arr[_j] = (int8_t)(((uint16_t)_bd16[_j]) & 0xFF);
+                _ad_lo_arr[_j] = (int8_t)(((uint16_t)_ad16[_j]) & 0xFF);
+                _bc_lo_arr[_j] = (int8_t)(((uint16_t)_bc16[_j]) & 0xFF);
+            }
+
+            int8x16x4_t _lut_hi_item;
+            _lut_hi_item.val[0] = vld1q_s8(_ac_hi_arr);
+            _lut_hi_item.val[1] = vld1q_s8(_bd_hi_arr);
+            _lut_hi_item.val[2] = vld1q_s8(_ad_hi_arr);
+            _lut_hi_item.val[3] = vld1q_s8(_bc_hi_arr);
+
+            int8x16x4_t _lut_lo_item;
+            _lut_lo_item.val[0] = vld1q_s8(_ac_lo_arr);
+            _lut_lo_item.val[1] = vld1q_s8(_bd_lo_arr);
+            _lut_lo_item.val[2] = vld1q_s8(_ad_lo_arr);
+            _lut_lo_item.val[3] = vld1q_s8(_bc_lo_arr);
+
+            lut_hi[_blk].v[_i/3] = _lut_hi_item;
+            lut_lo[_blk].v[_i/3] = _lut_lo_item;
         }
-        
-        // 处理剩余部分
-        _r0 = (int8_t) act[_blk].x_real[_i  ];
-        _i0 = (int8_t)-act[_blk].x_imag[_i  ];
-        _r1 = (int8_t) 0;
-        _i1 = (int8_t) 0;
-        _r2 = (int8_t) 0;
-        _i2 = (int8_t) 0;
-
-        int8x16_t _ac = {
-            -_r0 - _r1 - _r2,
-            -_r0 - _r1 + _r2,
-            -_r0 - _r1,
-            -_r0 - _r1,
-
-            -_r0 + _r1 - _r2,
-            -_r0 + _r1 + _r2,
-            -_r0 + _r1,
-            -_r0 + _r1,
-
-            -_r0 - _r2,
-            -_r0 + _r2,
-            -_r0,
-            -_r0,
-
-            -_r0 - _r2,
-            -_r0 + _r2,
-            -_r0,
-            -_r0,
-        };
-
-        int8x16_t _bd = {
-            0,
-            0,
-            -_i2,
-            _i2,
-
-            0,
-            0,
-            -_i2,
-            _i2,
-
-            -_i1,
-            -_i1,
-            -_i1 - _i2,
-            -_i1 + _i2,
-
-            _i1,
-            _i1,
-            _i1 - _i2,
-            _i1 + _i2,
-        };
-
-        int8x16_t _ad = {
-            0,
-            0,
-            -_r2,
-            _r2,
-
-            0,
-            0,
-            -_r2,
-            _r2,
-
-            -_r1,
-            -_r1,
-            -_r1 - _r2,
-            -_r1 + _r2,
-
-            _r1,
-            _r1,
-            _r1 - _r2,
-            _r1 + _r2,
-        };
-        
-        int8x16_t _bc = {
-            -_i0 - _i1 - _i2,
-            -_i0 - _i1 + _i2,
-            -_i0 - _i1,
-            -_i0 - _i1,
-
-            -_i0 + _i1 - _i2,
-            -_i0 + _i1 + _i2,
-            -_i0 + _i1,
-            -_i0 + _i1,
-
-            -_i0 - _i2,
-            -_i0 + _i2,
-            -_i0,
-            -_i0,
-
-            -_i0 - _i2,
-            -_i0 + _i2,
-            -_i0,
-            -_i0,
-        };
-
-        lut[_blk].v[_i/3] = (int8x16x4_t){.val= _ac, _bd, _ad, _bc};
     }
 }
 
@@ -528,8 +494,33 @@ static inline int8x16x4_t mul_mat_block_16x3_3x1_with_lut(uint8x16_t iweight_16x
     };
 }
 
+// 输入两个 int8x16_t，返回 int16x8x2_t，每个元素高8位来自 a，低8位来自 b
+static inline int16x8x2_t merge_int8_to_int16x8x2(int8x16_t a, int8x16_t b) {
+    // 1. 拆分低 8 位和高 8 位
+    int8x8_t a_low  = vget_low_s8(a);    // a[0..7]
+    int8x8_t a_high = vget_high_s8(a);   // a[8..15]
+    int8x8_t b_low  = vget_low_s8(b);    // b[0..7]
+    int8x8_t b_high = vget_high_s8(b);   // b[8..15]
 
-void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst) {
+    // 2. 扩展到 int16x8_t
+    int16x8_t a_low16  = vmovl_s8(a_low);     // a[0..7]
+    int16x8_t a_high16 = vmovl_s8(a_high);    // a[8..15]
+    int16x8_t b_low16  = vreinterpretq_s16_u16(vmovl_u8(vreinterpret_u8_s8(b_low)));     // b[0..7]
+    int16x8_t b_high16 = vreinterpretq_s16_u16(vmovl_u8(vreinterpret_u8_s8(b_high)));    // b[8..15]
+
+    // 3. 左移 a 的高 8 位到 16 位整数的高位
+    a_low16  = vshlq_n_s16(a_low16, 8);
+    a_high16 = vshlq_n_s16(a_high16, 8);
+
+    // 4. 合并高 8 位和低 8 位
+    int16x8x2_t result;
+    result.val[0] = vorrq_s16(a_low16, b_low16);   // 前 8 个元素
+    result.val[1] = vorrq_s16(a_high16, b_high16); // 后 8 个元素
+
+    return result;
+}
+
+void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut_hi, const lut_block *lut_lo, float *dst) {
     const int _blk_n = (k+QK_K-1)/QK_K;
     const int _in_blk_n = (QK_K+2)/3;
     for (int _row = row_begin; _row <= row_end; _row+=16) {
@@ -537,7 +528,12 @@ void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_
         for (int _blk = 0; _blk < _blk_n; _blk++) {
             
             const block_ifairy_1x3 *_w_blk_base = _w_base + _blk;
-            const lut_block *_lut_blk_base = lut + _blk;
+            const lut_block *_lut_blk_base_lo = lut_lo + _blk;
+            const lut_block *_lut_blk_base_hi = lut_hi + _blk;
+            const uint8x16_t _mask_idx = vdupq_n_u8(0b00111111);
+            const uint8x16_t _mask_b6  = vdupq_n_u8(0b01000000);
+            const uint8x16_t _mask_b7  = vdupq_n_u8(0b10000000);
+            const uint16x8_t _v255 = vdupq_n_u16(0x00FF);
 
             int16x8x2_t _block_dst_00 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
             int16x8x2_t _block_dst_01 = {.val=vdupq_n_s16(0), vdupq_n_s16(0)};
@@ -547,21 +543,83 @@ void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_
             #pragma unroll
             for (int _i = 0; _i < _in_blk_n; _i++) {
                 uint8x16_t _iweight_16x3 = vld1q_u8(_w_blk_base -> qs[_i]);
-                int8x16x4_t _iret = mul_mat_block_16x3_3x1_with_lut(_iweight_16x3, _lut_blk_base -> v[_i]);
 
-                _block_dst_00.val[0] = vaddw_s8(_block_dst_00.val[0],  vget_low_s8(_iret.val[0]));
-                _block_dst_00.val[1] = vaddw_s8(_block_dst_00.val[1], vget_high_s8(_iret.val[0]));
-                _block_dst_01.val[0] = vaddw_s8(_block_dst_01.val[0],  vget_low_s8(_iret.val[1]));
-                _block_dst_01.val[1] = vaddw_s8(_block_dst_01.val[1], vget_high_s8(_iret.val[1]));
-                _block_dst_10.val[0] = vaddw_s8(_block_dst_10.val[0],  vget_low_s8(_iret.val[2]));
-                _block_dst_10.val[1] = vaddw_s8(_block_dst_10.val[1], vget_high_s8(_iret.val[2]));
-                _block_dst_11.val[0] = vaddw_s8(_block_dst_11.val[0],  vget_low_s8(_iret.val[3]));
-                _block_dst_11.val[1] = vaddw_s8(_block_dst_11.val[1], vget_high_s8(_iret.val[3]));
+                uint8x16_t _index = vandq_u8(_iweight_16x3, _mask_idx);
+                uint8x16_t _fl0 = vtstq_u8(_iweight_16x3, _mask_b6);
+                uint8x16_t _fl1 = vtstq_u8(_iweight_16x3, _mask_b7);
+
+                int8x16_t _ac00_hi = vqtbl1q_s8(_lut_blk_base_hi->v[_i].val[0], _index);
+                int8x16_t _bd01_hi = vqtbl1q_s8(_lut_blk_base_hi->v[_i].val[1], _index);
+                int8x16_t _ac11_hi = vqtbl1q_s8(_lut_blk_base_hi->v[_i].val[2], _index);
+                int8x16_t _bd11_hi = vqtbl1q_s8(_lut_blk_base_hi->v[_i].val[3], _index);
+
+                int8x16_t _ac00_lo = vqtbl1q_s8(_lut_blk_base_lo->v[_i].val[0], _index);
+                int8x16_t _bd01_lo = vqtbl1q_s8(_lut_blk_base_lo->v[_i].val[1], _index);
+                int8x16_t _ac11_lo = vqtbl1q_s8(_lut_blk_base_lo->v[_i].val[2], _index);
+                int8x16_t _bd11_lo = vqtbl1q_s8(_lut_blk_base_lo->v[_i].val[3], _index);
+
+                int16x8x2_t _ac00 = merge_int8_to_int16x8x2(_ac00_hi, _ac00_lo);
+                int16x8x2_t _bd01 = merge_int8_to_int16x8x2(_bd01_hi, _bd01_lo);
+                int16x8x2_t _ac11 = merge_int8_to_int16x8x2(_ac11_hi, _ac11_lo);
+                int16x8x2_t _bd11 = merge_int8_to_int16x8x2(_bd11_hi, _bd11_lo);
+
+                uint16x8_t _mfl0_lo = vceqq_u16(vmovl_u8(vget_low_u8(_fl0)), _v255);
+                uint16x8_t _mfl0_hi = vceqq_u16(vmovl_u8(vget_high_u8(_fl0)), _v255);
+                uint16x8_t _mfl1_lo = vceqq_u16(vmovl_u8(vget_low_u8(_fl1)), _v255);
+                uint16x8_t _mfl1_hi = vceqq_u16(vmovl_u8(vget_high_u8(_fl1)), _v255);
+
+                int16x8_t _ac01_0 = vnegq_s16(_ac00.val[0]);
+                int16x8_t _ac01_1 = vnegq_s16(_ac00.val[1]);
+                int16x8_t _ac10_0 = vnegq_s16(_ac11.val[0]);
+                int16x8_t _ac10_1 = vnegq_s16(_ac11.val[1]);
+                int16x8_t _bd00_0 = vnegq_s16(_bd01.val[0]);
+                int16x8_t _bd00_1 = vnegq_s16(_bd01.val[1]);
+                int16x8_t _bd10_0 = vnegq_s16(_bd11.val[0]);
+                int16x8_t _bd10_1 = vnegq_s16(_bd11.val[1]);
+
+                int16x8_t _ac_l_0 = vbslq_s16(_mfl0_lo, _ac01_0, _ac00.val[0]);
+                int16x8_t _ac_l_1 = vbslq_s16(_mfl0_hi, _ac01_1, _ac00.val[1]);
+                int16x8_t _ad_l_0 = vbslq_s16(_mfl0_lo, _ac10_0, _ac11.val[0]);
+                int16x8_t _ad_l_1 = vbslq_s16(_mfl0_hi, _ac10_1, _ac11.val[1]);
+                int16x8_t _bc_l_0 = vbslq_s16(_mfl0_lo, _bd10_0, _bd11.val[0]);
+                int16x8_t _bc_l_1 = vbslq_s16(_mfl0_hi, _bd10_1, _bd11.val[1]);
+                int16x8_t _ac_h_0 = vbslq_s16(_mfl0_lo, _ac11.val[0], _ac10_0);
+                int16x8_t _ac_h_1 = vbslq_s16(_mfl0_hi, _ac11.val[1], _ac10_1);
+                int16x8_t _bc_h_0 = vbslq_s16(_mfl0_lo, _bd01.val[0], _bd00_0);
+                int16x8_t _bc_h_1 = vbslq_s16(_mfl0_hi, _bd01.val[1], _bd00_1);
+                int16x8_t _bd_h_0 = vbslq_s16(_mfl0_lo, _bd11.val[0], _bd10_0);
+                int16x8_t _bd_h_1 = vbslq_s16(_mfl0_hi, _bd11.val[1], _bd10_1);
+
+                int16x8x2_t _merged_00 = {.val = {
+                    vbslq_s16(_mfl1_lo, _ac_h_0, _ac_l_0),
+                    vbslq_s16(_mfl1_hi, _ac_h_1, _ac_l_1)
+                }};
+                int16x8x2_t _merged_01 = {.val = {
+                    vbslq_s16(_mfl1_lo, _ac_l_0, _ad_l_0),
+                    vbslq_s16(_mfl1_hi, _ac_l_1, _ad_l_1)
+                }};
+                int16x8x2_t _merged_10 = {.val = {
+                    vbslq_s16(_mfl1_lo, _bc_h_0, _bc_l_0),
+                    vbslq_s16(_mfl1_hi, _bc_h_1, _bc_l_1)
+                }};
+                int16x8x2_t _merged_11 = {.val = {
+                    vbslq_s16(_mfl1_lo, _bd_h_0, _bc_h_0),
+                    vbslq_s16(_mfl1_hi, _bd_h_1, _bc_h_1)
+                }};
+
+                _block_dst_00.val[0] = vaddq_s16(_block_dst_00.val[0],  _merged_00.val[0]);
+                _block_dst_00.val[1] = vaddq_s16(_block_dst_00.val[1], _merged_00.val[1]);
+                _block_dst_01.val[0] = vaddq_s16(_block_dst_01.val[0],  _merged_01.val[0]);
+                _block_dst_01.val[1] = vaddq_s16(_block_dst_01.val[1], _merged_01.val[1]);
+                _block_dst_10.val[0] = vaddq_s16(_block_dst_10.val[0],  _merged_10.val[0]);
+                _block_dst_10.val[1] = vaddq_s16(_block_dst_10.val[1], _merged_10.val[1]);
+                _block_dst_11.val[0] = vaddq_s16(_block_dst_11.val[0],  _merged_11.val[0]);
+                _block_dst_11.val[1] = vaddq_s16(_block_dst_11.val[1], _merged_11.val[1]);
             }
 
             // 反量化，写回
-            const float _lr = lut[_blk].d_real;
-            const float _li = lut[_blk].d_imag;
+            const float _lr = lut_lo[_blk].d_real;
+            const float _li = lut_lo[_blk].d_imag;
             const int _w_row = _row >> 4;
             const float *_wr = w[_w_row * _blk_n + _blk].d_real;
             const float *_wi = w[_w_row * _blk_n + _blk].d_imag;
@@ -706,18 +764,19 @@ void mul_mat_mxk_kx1_with_lut_q8(int k, int row_begin, int row_end, const block_
 
 
 
-void mul_mat_mxk_kxn_with_lut_q8_base(int k, int row_begin, int row_end, int col_begin, int col_end, const block_ifairy_1x3 *w, const lut_block *lut_base, float *dst_base) {
+void mul_mat_mxk_kxn_with_lut_q8_base(int k, int row_begin, int row_end, int col_begin, int col_end, const block_ifairy_1x3 *w, const lut_block *lut_hi_base, const lut_block *lut_lo_base, float *dst_base) {
     const int _blk_n = (k+QK_K-1)/QK_K;
     for (int _col = col_begin; _col <= col_end; _col++) {
         float *_dst = dst_base + _col*k;
-        const lut_block *_lut = lut_base + _col*_blk_n;
-        mul_mat_mxk_kx1_with_lut_q8(k, row_begin, row_end, w, lut_base, dst_base);
+        const lut_block *_lut_hi = lut_hi_base + _col*_blk_n;
+        const lut_block *_lut_lo = lut_lo_base + _col*_blk_n;
+        mul_mat_mxk_kx1_with_lut_q8(k, row_begin, row_end, w, _lut_hi, _lut_lo, _dst);
     }
 }
 
 
-void mul_mat_mxk_kxn_with_lut_q8(int k, int n, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut, float *dst) {
-    mul_mat_mxk_kxn_with_lut_q8_base(k, row_begin, row_end, 0, n-1, w, lut, dst);
+void mul_mat_mxk_kxn_with_lut_q8(int k, int n, int row_begin, int row_end, const block_ifairy_1x3 *w, const lut_block *lut_hi, const lut_block *lut_lo, float *dst) {
+    mul_mat_mxk_kxn_with_lut_q8_base(k, row_begin, row_end, 0, n-1, w, lut_hi, lut_lo, dst);
 }
 
 
